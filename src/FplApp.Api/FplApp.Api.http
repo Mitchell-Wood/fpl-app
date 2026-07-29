@@ -1,0 +1,11 @@
+@FplApp.Api_HostAddress = http://localhost:5140
+
+GET {{FplApp.Api_HostAddress}}/api/bootstrap-static
+Accept: application/json
+
+###
+
+GET {{FplApp.Api_HostAddress}}/api/fixtures
+Accept: application/json
+
+###

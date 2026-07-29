@@ -1,0 +1,44 @@
+using FplApp.Core.Models;
+using Microsoft.Extensions.Caching.Memory;
+
+namespace FplApp.Api.Services;
+
+public class FplDataService : IFplDataService
+{
+    public const string HttpClientName = "FplApi";
+    private const string BootstrapStaticCacheKey = "fpl:bootstrap-static";
+    private static readonly TimeSpan BootstrapStaticCacheDuration = TimeSpan.FromMinutes(15);
+
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IMemoryCache _cache;
+    private readonly ILogger<FplDataService> _logger;
+
+    public FplDataService(IHttpClientFactory httpClientFactory, IMemoryCache cache, ILogger<FplDataService> logger)
+    {
+        _httpClientFactory = httpClientFactory;
+        _cache = cache;
+        _logger = logger;
+    }
+
+    public async Task<BootstrapStatic> GetBootstrapStaticAsync(CancellationToken cancellationToken = default)
+    {
+        var cached = await _cache.GetOrCreateAsync(BootstrapStaticCacheKey, async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = BootstrapStaticCacheDuration;
+            _logger.LogInformation("Fetching bootstrap-static from the FPL API (cache miss)");
+
+            var client = _httpClientFactory.CreateClient(HttpClientName);
+            var result = await client.GetFromJsonAsync<BootstrapStatic>("bootstrap-static/", cancellationToken);
+            return result ?? throw new InvalidOperationException("FPL bootstrap-static response was empty.");
+        });
+
+        return cached ?? throw new InvalidOperationException("FPL bootstrap-static response was empty.");
+    }
+
+    public async Task<List<Fixture>> GetFixturesAsync(CancellationToken cancellationToken = default)
+    {
+        var client = _httpClientFactory.CreateClient(HttpClientName);
+        var result = await client.GetFromJsonAsync<List<Fixture>>("fixtures/", cancellationToken);
+        return result ?? [];
+    }
+}
