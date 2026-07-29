@@ -36,6 +36,10 @@ Or use the requests in `src/FplApp.Api/FplApp.Api.http` (Visual Studio / VS Code
 
 In `Development` environment, an OpenAPI document is available at `/openapi/v1.json`.
 
+## Dashboard
+
+Navigating to the site root (e.g. `https://localhost:7114/` or `http://localhost:5140/`) serves a small static dashboard (`src/FplApp.Api/wwwroot/index.html`) with sortable/filterable tables for Players, Teams, and Fixtures, instead of raw JSON. It's plain HTML/CSS/JS with no build step — it just calls the two API endpoints below client-side. Fixture difficulty is shown as a colored, labelled chip (easy → very hard).
+
 ## Endpoints
 
 | Endpoint | Description | Caching |
