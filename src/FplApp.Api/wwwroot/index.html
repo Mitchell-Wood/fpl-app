@@ -179,6 +179,37 @@
   .diff-warning { background: var(--status-warning); color: #2b2200; }
   .diff-serious { background: var(--status-serious); }
   .diff-critical { background: var(--status-critical); }
+  .diff-chip.mini {
+    font-size: 0.72rem;
+    padding: 2px 7px;
+  }
+  .diff-blank {
+    background: var(--gridline);
+    color: var(--text-secondary);
+  }
+  .section-heading {
+    font-size: 1rem;
+    margin: 0 0 12px;
+  }
+  .section-heading:not(:first-child) {
+    margin-top: 32px;
+  }
+  .inline-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+  }
+  .inline-label input {
+    width: 64px;
+  }
+  .ticker-cell {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    white-space: normal;
+  }
   .status-msg {
     padding: 40px 0;
     text-align: center;
@@ -251,6 +282,28 @@
   </section>
 
   <section id="fixtures" class="panel">
+    <h2 class="section-heading">Fixture difficulty ticker</h2>
+    <div class="controls">
+      <label class="inline-label" for="ticker-weeks">Next
+        <input id="ticker-weeks" type="number" min="1" max="20" value="5">
+        gameweeks
+      </label>
+    </div>
+    <div class="table-wrap">
+      <table id="ticker-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th data-key="name" class="sortable">Team</th>
+            <th>Upcoming fixtures</th>
+            <th data-key="avg" class="sortable num">Avg difficulty</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <h2 class="section-heading">Fixtures by gameweek</h2>
     <div class="controls">
       <select id="fixture-gameweek"></select>
     </div>
@@ -282,6 +335,7 @@
     positionsById: new Map(),
     playerSort: { key: 'total_points', dir: 'desc' },
     teamSort: { key: 'position', dir: 'asc' },
+    tickerSort: { key: 'avg', dir: 'asc' },
   };
 
   const DIFFICULTY_LABELS = { 1: 'Very easy', 2: 'Easy', 3: 'Medium', 4: 'Hard', 5: 'Very hard' };
@@ -315,6 +369,7 @@
       renderPlayers();
       renderTeams();
       renderFixtures();
+      renderTicker();
     } catch (err) {
       statusEl.textContent = 'Could not load FPL data: ' + err.message;
       statusEl.classList.add('error');
@@ -471,6 +526,70 @@
     }).join('') || `<tr><td colspan="7" class="muted">No fixtures this gameweek.</td></tr>`;
   }
 
+  // ---- Fixture difficulty ticker ----
+
+  function computeTickerRows(weeks) {
+    const events = state.bootstrap.events;
+    const startEvent = events.find(e => !e.finished) || events[0];
+    if (!startEvent) return [];
+    const gwIds = Array.from({ length: weeks }, (_, i) => startEvent.id + i);
+
+    return state.bootstrap.teams.map(team => {
+      const gwFixtures = gwIds.map(gwId =>
+        state.fixtures
+          .filter(f => f.event === gwId && (f.team_h === team.id || f.team_a === team.id))
+          .map(f => {
+            const isHome = f.team_h === team.id;
+            return {
+              opponent: teamName(isHome ? f.team_a : f.team_h),
+              venue: isHome ? 'H' : 'A',
+              difficulty: isHome ? f.team_h_difficulty : f.team_a_difficulty,
+            };
+          })
+      );
+      const flat = gwFixtures.flat();
+      const avg = flat.length ? flat.reduce((sum, f) => sum + f.difficulty, 0) / flat.length : null;
+      return { name: team.name, gwFixtures, avg, fixtureCount: flat.length };
+    });
+  }
+
+  function renderTicker() {
+    const weeksInput = document.getElementById('ticker-weeks');
+    const weeks = Math.min(20, Math.max(1, parseInt(weeksInput.value, 10) || 5));
+
+    let rows = computeTickerRows(weeks);
+
+    const { key, dir } = state.tickerSort;
+    rows.sort((a, b) => {
+      const av = key === 'avg' ? (a.avg ?? Infinity) : a[key];
+      const bv = key === 'avg' ? (b.avg ?? Infinity) : b[key];
+      const cmp = typeof av === 'string' ? av.localeCompare(bv) : av - bv;
+      return dir === 'asc' ? cmp : -cmp;
+    });
+
+    const tbody = document.querySelector('#ticker-table tbody');
+    tbody.innerHTML = rows.map((r, i) => `
+      <tr>
+        <td class="num">${i + 1}</td>
+        <td>${escapeHtml(r.name)}</td>
+        <td><div class="ticker-cell">${renderTickerFixtures(r.gwFixtures)}</div></td>
+        <td class="num">${r.avg !== null ? r.avg.toFixed(2) : '—'}</td>
+      </tr>
+    `).join('') || `<tr><td colspan="4" class="muted">No fixture data for this range.</td></tr>`;
+    updateSortArrows('ticker-table', state.tickerSort);
+  }
+
+  function renderTickerFixtures(gwFixtures) {
+    return gwFixtures.map(fixturesInGw => {
+      if (!fixturesInGw.length) {
+        return `<span class="diff-chip mini diff-blank" title="Blank gameweek">Blank</span>`;
+      }
+      return fixturesInGw.map(f =>
+        `<span class="diff-chip mini ${difficultyClass(f.difficulty)}" title="vs ${escapeHtml(f.opponent)} (${f.venue}) — ${DIFFICULTY_LABELS[f.difficulty]}">${escapeHtml(f.opponent)} (${f.venue}) ${f.difficulty}</span>`
+      ).join('');
+    }).join('');
+  }
+
   // ---- Shared helpers ----
 
   function updateSortArrows(tableId, sortState) {
@@ -517,6 +636,8 @@
   wireSorting('teams-table', state.teamSort, renderTeams);
   document.getElementById('player-search').addEventListener('input', renderPlayers);
   document.getElementById('player-position').addEventListener('change', renderPlayers);
+  wireSorting('ticker-table', state.tickerSort, renderTicker);
+  document.getElementById('ticker-weeks').addEventListener('input', renderTicker);
   loadData();
 </script>
 </body>
