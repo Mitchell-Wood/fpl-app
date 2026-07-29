@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FPL App</title>
+<style>
+  :root {
+    color-scheme: light;
+    --surface-1:      #fcfcfb;
+    --page-plane:     #f9f9f7;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --gridline:       #e1e0d9;
+    --baseline:       #c3c2b7;
+    --border:         rgba(11,11,11,0.10);
+    --series-1:       #2a78d6;
+    --status-good:      #0ca30c;
+    --status-warning:   #fab219;
+    --status-serious:   #ec835a;
+    --status-critical:  #d03b3b;
+    --row-hover: rgba(11,11,11,0.035);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --surface-1:      #1a1a19;
+      --page-plane:     #0d0d0d;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --gridline:       #2c2c2a;
+      --baseline:       #383835;
+      --border:         rgba(255,255,255,0.10);
+      --series-1:       #3987e5;
+      --status-good:      #0ca30c;
+      --status-warning:   #fab219;
+      --status-serious:   #ec835a;
+      --status-critical:  #d03b3b;
+      --row-hover: rgba(255,255,255,0.05);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --surface-1:      #1a1a19;
+    --page-plane:     #0d0d0d;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #898781;
+    --gridline:       #2c2c2a;
+    --baseline:       #383835;
+    --border:         rgba(255,255,255,0.10);
+    --series-1:       #3987e5;
+    --row-hover: rgba(255,255,255,0.05);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--page-plane);
+    color: var(--text-primary);
+  }
+  header {
+    padding: 20px clamp(16px, 4vw, 40px) 0;
+  }
+  h1 {
+    margin: 0 0 4px;
+    font-size: 1.5rem;
+  }
+  .subtitle {
+    color: var(--text-secondary);
+    margin: 0 0 16px;
+    font-size: 0.9rem;
+  }
+  nav.tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--gridline);
+  }
+  nav.tabs button {
+    appearance: none;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    font-weight: 600;
+    padding: 10px 14px;
+    cursor: pointer;
+  }
+  nav.tabs button.active {
+    color: var(--text-primary);
+    border-bottom-color: var(--series-1);
+  }
+  main {
+    padding: 20px clamp(16px, 4vw, 40px) 40px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  section.panel {
+    display: none;
+  }
+  section.panel.active {
+    display: block;
+  }
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .controls input, .controls select {
+    font: inherit;
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface-1);
+    color: var(--text-primary);
+  }
+  .controls input { min-width: 200px; }
+  .table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--gridline);
+    border-radius: 10px;
+    background: var(--surface-1);
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 0.9rem;
+    white-space: nowrap;
+  }
+  thead th {
+    position: sticky;
+    top: 0;
+    background: var(--surface-1);
+    text-align: left;
+    padding: 10px 12px;
+    color: var(--text-secondary);
+    font-weight: 600;
+    border-bottom: 1px solid var(--gridline);
+    cursor: pointer;
+    user-select: none;
+  }
+  thead th.sortable:hover { color: var(--text-primary); }
+  thead th .arrow { color: var(--series-1); margin-left: 4px; }
+  tbody td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--gridline);
+    font-variant-numeric: tabular-nums;
+  }
+  tbody tr:hover { background: var(--row-hover); }
+  tbody tr:last-child td { border-bottom: none; }
+  .num { text-align: right; }
+  .muted { color: var(--text-muted); }
+  .pos-chip {
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--gridline);
+    color: var(--text-secondary);
+  }
+  .diff-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 999px;
+    color: #ffffff;
+    white-space: nowrap;
+  }
+  .diff-good { background: var(--status-good); }
+  .diff-warning { background: var(--status-warning); color: #2b2200; }
+  .diff-serious { background: var(--status-serious); }
+  .diff-critical { background: var(--status-critical); }
+  .status-msg {
+    padding: 40px 0;
+    text-align: center;
+    color: var(--text-secondary);
+  }
+  .status-msg.error { color: var(--status-critical); }
+  footer {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    padding: 0 0 30px;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>FPL App</h1>
+  <p class="subtitle">Live-ish data from the Fantasy Premier League API</p>
+  <nav class="tabs">
+    <button data-panel="players" class="active">Players</button>
+    <button data-panel="teams">Teams</button>
+    <button data-panel="fixtures">Fixtures</button>
+  </nav>
+</header>
+<main>
+  <div id="status" class="status-msg">Loading FPL data&hellip;</div>
+
+  <section id="players" class="panel active">
+    <div class="controls">
+      <input id="player-search" type="search" placeholder="Search players&hellip;">
+      <select id="player-position">
+        <option value="">All positions</option>
+      </select>
+    </div>
+    <div class="table-wrap">
+      <table id="players-table">
+        <thead>
+          <tr>
+            <th data-key="web_name" class="sortable">Player</th>
+            <th data-key="team_name" class="sortable">Team</th>
+            <th data-key="position" class="sortable">Pos</th>
+            <th data-key="now_cost" class="sortable num">Cost</th>
+            <th data-key="total_points" class="sortable num">Points</th>
+            <th data-key="form" class="sortable num">Form</th>
+            <th data-key="selected_by_percent" class="sortable num">Selected</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="teams" class="panel">
+    <div class="table-wrap">
+      <table id="teams-table">
+        <thead>
+          <tr>
+            <th data-key="position" class="sortable num">Pos</th>
+            <th data-key="name" class="sortable">Team</th>
+            <th data-key="played" class="sortable num">P</th>
+            <th data-key="win" class="sortable num">W</th>
+            <th data-key="draw" class="sortable num">D</th>
+            <th data-key="loss" class="sortable num">L</th>
+            <th data-key="points" class="sortable num">Pts</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="fixtures" class="panel">
+    <div class="controls">
+      <select id="fixture-gameweek"></select>
+    </div>
+    <div class="table-wrap">
+      <table id="fixtures-table">
+        <thead>
+          <tr>
+            <th>Kickoff</th>
+            <th>Home</th>
+            <th>Difficulty</th>
+            <th></th>
+            <th>Away</th>
+            <th>Difficulty</th>
+            <th>Score</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+<footer>Data from fantasy.premierleague.com &middot; bootstrap-static cached 15 min server-side</footer>
+
+<script>
+  const state = {
+    bootstrap: null,
+    fixtures: null,
+    teamsById: new Map(),
+    positionsById: new Map(),
+    playerSort: { key: 'total_points', dir: 'desc' },
+    teamSort: { key: 'position', dir: 'asc' },
+  };
+
+  const DIFFICULTY_LABELS = { 1: 'Very easy', 2: 'Easy', 3: 'Medium', 4: 'Hard', 5: 'Very hard' };
+
+  function difficultyClass(n) {
+    if (n <= 2) return 'diff-good';
+    if (n === 3) return 'diff-warning';
+    if (n === 4) return 'diff-serious';
+    return 'diff-critical';
+  }
+
+  function diffChip(n) {
+    const label = DIFFICULTY_LABELS[n] || n;
+    return `<span class="diff-chip ${difficultyClass(n)}" title="Difficulty ${n}/5">${label} (${n})</span>`;
+  }
+
+  async function loadData() {
+    const statusEl = document.getElementById('status');
+    try {
+      const [bootstrap, fixtures] = await Promise.all([
+        fetch('/api/bootstrap-static').then(r => { if (!r.ok) throw new Error('bootstrap-static ' + r.status); return r.json(); }),
+        fetch('/api/fixtures').then(r => { if (!r.ok) throw new Error('fixtures ' + r.status); return r.json(); }),
+      ]);
+      state.bootstrap = bootstrap;
+      state.fixtures = fixtures;
+      state.teamsById = new Map(bootstrap.teams.map(t => [t.id, t]));
+      state.positionsById = new Map(bootstrap.element_types.map(p => [p.id, p]));
+      statusEl.style.display = 'none';
+      initPositionFilter();
+      initGameweekFilter();
+      renderPlayers();
+      renderTeams();
+      renderFixtures();
+    } catch (err) {
+      statusEl.textContent = 'Could not load FPL data: ' + err.message;
+      statusEl.classList.add('error');
+    }
+  }
+
+  function teamName(id) {
+    const t = state.teamsById.get(id);
+    return t ? t.short_name : '—';
+  }
+
+  function positionName(id) {
+    const p = state.positionsById.get(id);
+    return p ? p.singular_name_short : '—';
+  }
+
+  // ---- Players ----
+
+  function initPositionFilter() {
+    const select = document.getElementById('player-position');
+    const types = state.bootstrap.element_types ?? [];
+    for (const t of types) {
+      const opt = document.createElement('option');
+      opt.value = t.id;
+      opt.textContent = t.plural_name;
+      select.appendChild(opt);
+    }
+  }
+
+  function getPlayerRows() {
+    const search = document.getElementById('player-search').value.trim().toLowerCase();
+    const posFilter = document.getElementById('player-position').value;
+    const elements = state.bootstrap.elements;
+
+    let rows = elements.map(p => ({
+      web_name: p.web_name,
+      team_name: teamName(p.team),
+      position: positionName(p.element_type),
+      element_type: p.element_type,
+      now_cost: p.now_cost / 10,
+      total_points: p.total_points,
+      form: parseFloat(p.form) || 0,
+      selected_by_percent: parseFloat(p.selected_by_percent) || 0,
+    }));
+
+    if (posFilter) rows = rows.filter(r => String(r.element_type) === posFilter);
+    if (search) rows = rows.filter(r => r.web_name.toLowerCase().includes(search));
+
+    const { key, dir } = state.playerSort;
+    rows.sort((a, b) => {
+      const av = a[key], bv = b[key];
+      const cmp = typeof av === 'string' ? av.localeCompare(bv) : av - bv;
+      return dir === 'asc' ? cmp : -cmp;
+    });
+    return rows;
+  }
+
+  function renderPlayers() {
+    const rows = getPlayerRows();
+    const tbody = document.querySelector('#players-table tbody');
+    tbody.innerHTML = rows.map(r => `
+      <tr>
+        <td>${escapeHtml(r.web_name)}</td>
+        <td>${escapeHtml(r.team_name)}</td>
+        <td><span class="pos-chip">${escapeHtml(r.position)}</span></td>
+        <td class="num">£${r.now_cost.toFixed(1)}m</td>
+        <td class="num">${r.total_points}</td>
+        <td class="num">${r.form.toFixed(1)}</td>
+        <td class="num">${r.selected_by_percent.toFixed(1)}%</td>
+      </tr>
+    `).join('') || `<tr><td colspan="7" class="muted">No players match.</td></tr>`;
+    updateSortArrows('players-table', state.playerSort);
+  }
+
+  // ---- Teams ----
+
+  function getTeamRows() {
+    let rows = state.bootstrap.teams.map(t => ({
+      position: t.position,
+      name: t.name,
+      played: t.played,
+      win: t.win,
+      draw: t.draw,
+      loss: t.loss,
+      points: t.points,
+    }));
+    const { key, dir } = state.teamSort;
+    rows.sort((a, b) => {
+      const av = a[key], bv = b[key];
+      const cmp = typeof av === 'string' ? av.localeCompare(bv) : av - bv;
+      return dir === 'asc' ? cmp : -cmp;
+    });
+    return rows;
+  }
+
+  function renderTeams() {
+    const rows = getTeamRows();
+    const tbody = document.querySelector('#teams-table tbody');
+    tbody.innerHTML = rows.map(r => `
+      <tr>
+        <td class="num">${r.position || '—'}</td>
+        <td>${escapeHtml(r.name)}</td>
+        <td class="num">${r.played}</td>
+        <td class="num">${r.win}</td>
+        <td class="num">${r.draw}</td>
+        <td class="num">${r.loss}</td>
+        <td class="num">${r.points}</td>
+      </tr>
+    `).join('');
+    updateSortArrows('teams-table', state.teamSort);
+  }
+
+  // ---- Fixtures ----
+
+  function initGameweekFilter() {
+    const select = document.getElementById('fixture-gameweek');
+    const events = state.bootstrap.events;
+    select.innerHTML = '';
+    for (const e of events) {
+      const opt = document.createElement('option');
+      opt.value = e.id;
+      opt.textContent = e.name + (e.is_next ? ' (next)' : e.is_current ? ' (current)' : '');
+      if (e.is_next || e.is_current) opt.selected = true;
+      select.appendChild(opt);
+    }
+    if (!select.value && events.length) select.value = events[0].id;
+    select.addEventListener('change', renderFixtures);
+  }
+
+  function renderFixtures() {
+    const gw = document.getElementById('fixture-gameweek').value;
+    const rows = state.fixtures.filter(f => String(f.event) === gw);
+    rows.sort((a, b) => new Date(a.kickoff_time || 0) - new Date(b.kickoff_time || 0));
+
+    const tbody = document.querySelector('#fixtures-table tbody');
+    tbody.innerHTML = rows.map(f => {
+      const kickoff = f.kickoff_time
+        ? new Date(f.kickoff_time).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+        : 'TBC';
+      const score = f.finished || f.started
+        ? `${f.team_h_score ?? '-'} – ${f.team_a_score ?? '-'}`
+        : '—';
+      return `
+        <tr>
+          <td>${kickoff}</td>
+          <td>${escapeHtml(teamName(f.team_h))}</td>
+          <td>${diffChip(f.team_h_difficulty)}</td>
+          <td class="muted">vs</td>
+          <td>${escapeHtml(teamName(f.team_a))}</td>
+          <td>${diffChip(f.team_a_difficulty)}</td>
+          <td class="num">${score}</td>
+        </tr>
+      `;
+    }).join('') || `<tr><td colspan="7" class="muted">No fixtures this gameweek.</td></tr>`;
+  }
+
+  // ---- Shared helpers ----
+
+  function updateSortArrows(tableId, sortState) {
+    document.querySelectorAll(`#${tableId} thead th`).forEach(th => {
+      th.innerHTML = th.textContent.replace(/\s*[▲▼]$/, '');
+      if (th.dataset.key === sortState.key) {
+        th.innerHTML += `<span class="arrow">${sortState.dir === 'asc' ? '▲' : '▼'}</span>`;
+      }
+    });
+  }
+
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+  }
+
+  function wireSorting(tableId, sortState, renderFn) {
+    document.querySelectorAll(`#${tableId} thead th.sortable`).forEach(th => {
+      th.addEventListener('click', () => {
+        const key = th.dataset.key;
+        if (sortState.key === key) {
+          sortState.dir = sortState.dir === 'asc' ? 'desc' : 'asc';
+        } else {
+          sortState.key = key;
+          sortState.dir = 'desc';
+        }
+        renderFn();
+      });
+    });
+  }
+
+  function wireTabs() {
+    document.querySelectorAll('nav.tabs button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('nav.tabs button').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('section.panel').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById(btn.dataset.panel).classList.add('active');
+      });
+    });
+  }
+
+  wireTabs();
+  wireSorting('players-table', state.playerSort, renderPlayers);
+  wireSorting('teams-table', state.teamSort, renderTeams);
+  document.getElementById('player-search').addEventListener('input', renderPlayers);
+  document.getElementById('player-position').addEventListener('change', renderPlayers);
+  loadData();
+</script>
+</body>
+</html>
