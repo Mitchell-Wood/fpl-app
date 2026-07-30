@@ -619,6 +619,12 @@
         Budget assumes bank + the outgoing player's current price — not necessarily your exact FPL
         sell price, which can be lower once a player has risen in value.
       </p>
+      <div class="controls" style="margin-top:0;">
+        <label class="inline-label" for="transfer-fixture-weeks">Plan ahead
+          <input id="transfer-fixture-weeks" type="number" min="1" max="20" value="5">
+          gameweeks
+        </label>
+      </div>
       <div id="transfer-suggestions-content"></div>
     </div>
 
@@ -781,6 +787,7 @@
     myTeamLoaded: false,
     miniLeaguesLoaded: false,
     miniLeague: { leagueId: null, page: 1 },
+    myTeam: null, // { mode: 'real', teamId, eventId } or { mode: 'demo', picks, bankTenths }
   };
 
   const DIFFICULTY_LABELS = { 1: 'Very easy', 2: 'Easy', 3: 'Medium', 4: 'Hard', 5: 'Very hard' };
@@ -1568,6 +1575,25 @@
     section.style.display = '';
   }
 
+  function getTransferFixtureWeeks() {
+    return Math.min(20, Math.max(1, parseInt(document.getElementById('transfer-fixture-weeks').value, 10) || 5));
+  }
+
+  // Re-fetches just the transfer-suggestions section, e.g. when the "plan ahead N gameweeks"
+  // control changes — keeps the rest of the tab (squad, captaincy, chip strategy) untouched.
+  async function loadTransferSuggestions(teamId, eventId) {
+    const section = document.getElementById('transfer-suggestions-section');
+    try {
+      const res = await fetch(`/api/transfer-suggestions?teamId=${encodeURIComponent(teamId)}&eventId=${encodeURIComponent(eventId)}&fixtureWeeks=${getTransferFixtureWeeks()}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.available) renderTransferSuggestions(data.suggestions);
+      else section.style.display = 'none';
+    } catch (err) {
+      // Leave the section as-is; the squad/captaincy/chip-strategy sections already loaded fine.
+    }
+  }
+
   async function loadMyTeam() {
     const teamIdInput = document.getElementById('my-team-id');
     const teamId = teamIdInput.value.trim();
@@ -1603,7 +1629,7 @@
       const [teamRes, captainRes, transferRes] = await Promise.all([
         fetch(`/api/my-team?teamId=${encodeURIComponent(teamId)}&eventId=${encodeURIComponent(eventId)}`),
         fetch(`/api/captain-suggestions?teamId=${encodeURIComponent(teamId)}&eventId=${encodeURIComponent(eventId)}`),
-        fetch(`/api/transfer-suggestions?teamId=${encodeURIComponent(teamId)}&eventId=${encodeURIComponent(eventId)}`),
+        fetch(`/api/transfer-suggestions?teamId=${encodeURIComponent(teamId)}&eventId=${encodeURIComponent(eventId)}&fixtureWeeks=${getTransferFixtureWeeks()}`),
       ]);
       if (teamRes.status === 404) {
         statusEl.textContent = 'No FPL team found with that ID. Double-check it from the FPL site URL.';
@@ -1626,6 +1652,7 @@
       renderMyTeamRows(data.picks);
       tableWrap.style.display = '';
       renderChipStrategy(data.picks);
+      state.myTeam = { mode: 'real', teamId, eventId };
 
       if (captainRes.ok) {
         const captainData = await captainRes.json();
@@ -1746,15 +1773,30 @@
       .slice(0, 5);
   }
 
-  function buildDemoTransferSuggestions(picks, bankTenths) {
+  // Mirrors PlayerRecommendationService's scoring (form weighted heavily, plus points-per-cost,
+  // scaled by upcoming fixture ease) so demo candidate ranking reacts to the gameweek lookahead
+  // the same way the real /api/transfer-suggestions endpoint does.
+  function scoreCandidate(p, difficultyByTeam) {
+    const form = parseFloat(p.form) || 0;
+    const costInMillions = p.now_cost / 10;
+    if (costInMillions <= 0) return 0;
+    const valuePerCost = p.total_points / costInMillions;
+    const baseScore = (form * 2) + valuePerCost;
+    const avgDifficulty = difficultyByTeam.get(p.team) ?? 3.0;
+    const fixtureFactor = (6 - avgDifficulty) / 3;
+    return baseScore * fixtureFactor;
+  }
+
+  function buildDemoTransferSuggestions(picks, bankTenths, fixtureWeeks) {
     const squadIds = new Set(picks.map(p => p.playerId));
     const outCandidates = picks.slice().sort((a, b) => b.avgUpcomingDifficulty - a.avgUpcomingDifficulty).slice(0, 2);
+    const difficultyByTeam = avgUpcomingDifficultyByTeam(fixtureWeeks);
 
     return outCandidates.map(outPick => {
       const budgetAvailable = bankTenths + outPick.nowCost;
       const candidates = state.bootstrap.elements
         .filter(p => p.element_type === outPick.elementType && !squadIds.has(p.id) && p.status === 'a' && p.now_cost <= budgetAvailable)
-        .sort((a, b) => b.total_points - a.total_points)
+        .sort((a, b) => scoreCandidate(b, difficultyByTeam) - scoreCandidate(a, difficultyByTeam))
         .slice(0, 3)
         .map(p => ({
           webName: p.web_name,
@@ -1786,6 +1828,7 @@
     document.getElementById('transfer-suggestions-section').style.display = 'none';
 
     const { picks, bankTenths, value } = buildDemoSquad();
+    state.myTeam = { mode: 'demo', picks, bankTenths };
 
     summaryEl.innerHTML = `Sample Squad (Demo Manager) — 0 pts this GW `
       + `&middot; Bank: £${(bankTenths / 10).toFixed(1)}m &middot; Squad value: £${(value / 10).toFixed(1)}m`
@@ -1794,7 +1837,7 @@
     tableWrap.style.display = '';
     renderChipStrategy(picks);
     renderCaptaincy(buildDemoCaptainSuggestions(picks));
-    renderTransferSuggestions(buildDemoTransferSuggestions(picks, bankTenths));
+    renderTransferSuggestions(buildDemoTransferSuggestions(picks, bankTenths, getTransferFixtureWeeks()));
   }
 
   // ---- Mini-Leagues ----
@@ -2110,6 +2153,14 @@
   });
   document.getElementById('my-team-id').addEventListener('keydown', e => {
     if (e.key === 'Enter') loadMyTeam();
+  });
+  document.getElementById('transfer-fixture-weeks').addEventListener('input', () => {
+    if (!state.myTeam) return;
+    if (state.myTeam.mode === 'real') {
+      loadTransferSuggestions(state.myTeam.teamId, state.myTeam.eventId);
+    } else {
+      renderTransferSuggestions(buildDemoTransferSuggestions(state.myTeam.picks, state.myTeam.bankTenths, getTransferFixtureWeeks()));
+    }
   });
   document.getElementById('ml-load-leagues').addEventListener('click', loadMyLeagues);
   document.getElementById('ml-team-id').addEventListener('keydown', e => {
