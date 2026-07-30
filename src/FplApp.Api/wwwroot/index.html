@@ -615,9 +615,17 @@
 
     <div id="transfer-suggestions-section" style="display:none">
       <h3 class="section-heading" style="font-size:0.95rem;margin-top:24px;">Transfer suggestions</h3>
-      <p class="muted" style="font-size:0.82rem;margin:-6px 0 10px;">
-        Budget assumes bank + the outgoing player's current price — not necessarily your exact FPL
-        sell price, which can be lower once a player has risen in value.
+      <p class="muted" style="font-size:0.82rem;margin:-6px 0 6px;">
+        Each idea below is independent — it assumes you make just that one swap, starting fresh
+        from your bank each time, not several transfers at once. They're numbered biggest-upgrade-
+        first (#1 = the single best improvement available in your squad right now), scored on
+        recent form, season points, and how easy each player's upcoming fixtures are. Replacements
+        within each idea are also listed best-first.
+      </p>
+      <p class="muted" style="font-size:0.82rem;margin:0 0 10px;">
+        "Budget" is what you'd have to spend on a replacement if you sold that player alone: your
+        bank + their current price — not necessarily your exact FPL sell price, which can be lower
+        once a player has risen in value.
       </p>
       <div class="controls" style="margin-top:0;">
         <label class="inline-label" for="transfer-fixture-weeks">Plan ahead
@@ -1552,11 +1560,12 @@
       container.innerHTML = '';
       return;
     }
-    container.innerHTML = suggestions.map(s => {
+    const heading = `<div class="muted" style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.045em;margin-bottom:4px;">One-transfer ideas, biggest upgrade first</div>`;
+    const rows = suggestions.map((s, i) => {
       const candidatesHtml = s.candidates.length
-        ? s.candidates.map(c => `
+        ? s.candidates.map((c, ci) => `
             <div style="display:flex;justify-content:space-between;padding:4px 0;">
-              <span>${escapeHtml(c.webName)} <span class="muted">(${escapeHtml(c.teamName)})</span></span>
+              <span>${escapeHtml(c.webName)} <span class="muted">(${escapeHtml(c.teamName)})</span>${ci === 0 ? ' <span class="captain-badge">Best fit</span>' : ''}</span>
               <span class="num">£${(c.nowCost / 10).toFixed(1)}m &middot; Form ${c.form.toFixed(1)} &middot; ${c.totalPoints} pts</span>
             </div>
           `).join('')
@@ -1564,14 +1573,15 @@
       return `
         <div style="padding:10px 0;border-bottom:1px solid var(--gridline);">
           <div>
-            <strong>${escapeHtml(s.outWebName)}</strong> <span class="muted">(${escapeHtml(s.outTeamName)})</span>
+            <strong>${i + 1}. ${escapeHtml(s.outWebName)}</strong> <span class="muted">(${escapeHtml(s.outTeamName)})</span>
             ${s.outFlags.map(flagChip).join('')}
-            <span class="muted" style="float:right;">Budget: £${(s.budgetAvailable / 10).toFixed(1)}m</span>
+            <span class="muted" style="float:right;" title="What you'd have to spend on a replacement if you sold this player alone: bank + their current price">Replacement budget: £${(s.budgetAvailable / 10).toFixed(1)}m</span>
           </div>
           <div style="margin-top:6px;">${candidatesHtml}</div>
         </div>
       `;
     }).join('');
+    container.innerHTML = heading + rows;
   }
 
   function fundedUpgradeLegHtml(leg) {
@@ -1589,7 +1599,10 @@
     const { downgrade: d, upgrade: u, moneySaved } = fundedUpgrade;
     card.innerHTML = `
       <div class="lineup-card">
-        <div style="font-weight:700;margin-bottom:10px;">Funded upgrade idea</div>
+        <div style="font-weight:700;">Funded upgrade idea</div>
+        <div class="muted" style="font-size:0.78rem;margin:2px 0 10px;">
+          Unlike the single swaps below, this uses two transfers together — do both, not just one.
+        </div>
         <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;flex-wrap:wrap;gap:4px;">
           <span>Downgrade: ${fundedUpgradeLegHtml(d)}</span>
           <span class="num">£${(d.outNowCost / 10).toFixed(1)}m &rarr; £${(d.inNowCost / 10).toFixed(1)}m</span>
