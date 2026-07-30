@@ -185,6 +185,28 @@
     transition: opacity 0.12s ease;
   }
   .controls button:hover { opacity: 0.88; }
+  .controls button.secondary {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+  }
+  .controls button.secondary:hover {
+    opacity: 1;
+    background: var(--row-hover);
+    color: var(--text-primary);
+  }
+  .demo-badge {
+    display: inline-block;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--gridline);
+    color: var(--text-secondary);
+    margin-left: 6px;
+  }
   .table-wrap {
     overflow-x: auto;
     border: 1px solid var(--gridline);
@@ -576,6 +598,7 @@
       <input id="my-team-id" type="text" inputmode="numeric" placeholder="Team ID, e.g. 1234567" style="min-width:180px">
       <select id="my-team-gameweek"></select>
       <button id="my-team-load" type="button">Load team</button>
+      <button id="my-team-demo" type="button" class="secondary">Try with demo data</button>
     </div>
     <div id="my-team-status" class="status-msg" style="display:none"></div>
     <div id="my-team-summary" class="subtitle"></div>
@@ -1620,6 +1643,160 @@
     }
   }
 
+  // ---- My Team demo data ----
+  // Builds a sample squad from real, currently-loaded player data (no team ID / network call
+  // needed) so the My Team tab's layout can be previewed any time — handy pre-season, before any
+  // real team has public picks. Mirrors the shapes SquadAnalysisService/CaptaincyService/
+  // TransferPlannerService return so it can reuse the normal render functions unchanged.
+
+  function buildDemoSquad() {
+    const squadSlots = { 1: 2, 2: 5, 3: 5, 4: 3 };
+    const starterSlots = { 1: 1, 2: 4, 3: 4, 4: 2 };
+    const squadPlayers = [];
+    const starterIds = new Set();
+    for (const elementType of [1, 2, 3, 4]) {
+      const group = state.bootstrap.elements
+        .filter(p => p.element_type === elementType && p.status === 'a')
+        .slice()
+        .sort((a, b) => b.total_points - a.total_points)
+        .slice(0, squadSlots[elementType]);
+      squadPlayers.push(...group);
+      group.slice(0, starterSlots[elementType]).forEach(p => starterIds.add(p.id));
+    }
+
+    const starters = squadPlayers.filter(p => starterIds.has(p.id)).sort((a, b) => b.total_points - a.total_points);
+    const captainId = starters[0]?.id;
+    const viceCaptainId = starters[1]?.id;
+
+    const difficultyByTeam = avgUpcomingDifficultyByTeam(5);
+    const seasonStarted = state.fixtures.some(f => f.finished);
+
+    const picks = squadPlayers.map(p => {
+      const form = parseFloat(p.form) || 0;
+      const avgDifficulty = difficultyByTeam.get(p.team) ?? 3.0;
+      const flags = [];
+      if (p.status !== 'a') {
+        const suffix = p.news ? ` — ${p.news}` : '';
+        flags.push(`${{ i: 'Injured', s: 'Suspended', d: 'Doubtful' }[p.status] || 'Unavailable'}${suffix}`);
+      } else if (p.chance_of_playing_next_round != null && p.chance_of_playing_next_round < 100) {
+        flags.push(`Doubtful (${p.chance_of_playing_next_round}% chance of playing)`);
+      }
+      if (seasonStarted && form < 2.0) flags.push('Poor recent form');
+      if (avgDifficulty > 3.5) flags.push('Tough fixtures ahead');
+
+      return {
+        playerId: p.id,
+        webName: p.web_name,
+        teamName: teamName(p.team),
+        elementType: p.element_type,
+        isCaptain: p.id === captainId,
+        isViceCaptain: p.id === viceCaptainId,
+        isBenched: !starterIds.has(p.id),
+        nowCost: p.now_cost,
+        form,
+        totalPoints: p.total_points,
+        avgUpcomingDifficulty: Math.round(avgDifficulty * 100) / 100,
+        flags,
+      };
+    });
+
+    const bankTenths = 5;
+    const value = picks.reduce((sum, p) => sum + p.nowCost, 0) + bankTenths;
+    return { picks, bankTenths, value };
+  }
+
+  function buildDemoCaptainSuggestions(picks) {
+    const elementsById = new Map(state.bootstrap.elements.map(p => [p.id, p]));
+    const nextEvent = state.bootstrap.events.find(e => !e.finished) || state.bootstrap.events[0];
+    if (!nextEvent) return [];
+
+    const captainPick = picks.find(p => p.isCaptain);
+    const viceCaptainPick = picks.find(p => p.isViceCaptain);
+
+    return picks
+      .filter(pick => !pick.isBenched && pick.elementType !== 1)
+      .map(pick => {
+        const player = elementsById.get(pick.playerId);
+        const teamFixtures = player
+          ? state.fixtures.filter(f => f.event === nextEvent.id && (f.team_h === player.team || f.team_a === player.team))
+          : [];
+        if (!player || !teamFixtures.length) return null;
+
+        const effectiveForm = pick.form > 0 ? pick.form : (parseFloat(player.points_per_game) || 0);
+        let expectedPoints = 0;
+        const fixtures = teamFixtures.map(f => {
+          const isHome = f.team_h === player.team;
+          const difficulty = isHome ? f.team_h_difficulty : f.team_a_difficulty;
+          expectedPoints += effectiveForm * ((6 - difficulty) / 3);
+          return { opponent: teamName(isHome ? f.team_a : f.team_h), venue: isHome ? 'H' : 'A', difficulty };
+        });
+
+        return {
+          webName: pick.webName,
+          teamName: pick.teamName,
+          isCurrentCaptain: pick.playerId === captainPick?.playerId,
+          isCurrentViceCaptain: pick.playerId === viceCaptainPick?.playerId,
+          expectedPoints,
+          fixtures,
+          note: teamFixtures.length > 1 ? 'Double gameweek' : null,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.expectedPoints - a.expectedPoints)
+      .slice(0, 5);
+  }
+
+  function buildDemoTransferSuggestions(picks, bankTenths) {
+    const squadIds = new Set(picks.map(p => p.playerId));
+    const outCandidates = picks.slice().sort((a, b) => b.avgUpcomingDifficulty - a.avgUpcomingDifficulty).slice(0, 2);
+
+    return outCandidates.map(outPick => {
+      const budgetAvailable = bankTenths + outPick.nowCost;
+      const candidates = state.bootstrap.elements
+        .filter(p => p.element_type === outPick.elementType && !squadIds.has(p.id) && p.status === 'a' && p.now_cost <= budgetAvailable)
+        .sort((a, b) => b.total_points - a.total_points)
+        .slice(0, 3)
+        .map(p => ({
+          webName: p.web_name,
+          teamName: teamName(p.team),
+          nowCost: p.now_cost,
+          form: parseFloat(p.form) || 0,
+          totalPoints: p.total_points,
+        }));
+
+      return {
+        outWebName: outPick.webName,
+        outTeamName: outPick.teamName,
+        outFlags: outPick.flags,
+        budgetAvailable,
+        candidates,
+      };
+    });
+  }
+
+  function loadDemoMyTeam() {
+    if (!state.bootstrap || !state.fixtures) return;
+
+    const summaryEl = document.getElementById('my-team-summary');
+    const tableWrap = document.getElementById('my-team-table-wrap');
+
+    document.getElementById('my-team-status').style.display = 'none';
+    document.getElementById('captaincy-section').style.display = 'none';
+    document.getElementById('chip-strategy-section').style.display = 'none';
+    document.getElementById('transfer-suggestions-section').style.display = 'none';
+
+    const { picks, bankTenths, value } = buildDemoSquad();
+
+    summaryEl.innerHTML = `Sample Squad (Demo Manager) — 0 pts this GW `
+      + `&middot; Bank: £${(bankTenths / 10).toFixed(1)}m &middot; Squad value: £${(value / 10).toFixed(1)}m`
+      + `<span class="demo-badge">Demo data</span>`;
+    renderMyTeamRows(picks);
+    tableWrap.style.display = '';
+    renderChipStrategy(picks);
+    renderCaptaincy(buildDemoCaptainSuggestions(picks));
+    renderTransferSuggestions(buildDemoTransferSuggestions(picks, bankTenths));
+  }
+
   // ---- Mini-Leagues ----
 
   const CHIP_DISPLAY_NAMES = { wildcard: 'Wildcard', freehit: 'Free Hit', bboost: 'Bench Boost', '3xc': 'Triple Captain' };
@@ -1927,6 +2104,7 @@
   document.getElementById('rec-fixture-weeks').addEventListener('input', renderRecommendations);
   document.getElementById('price-watch-count').addEventListener('input', renderPriceWatch);
   document.getElementById('my-team-load').addEventListener('click', loadMyTeam);
+  document.getElementById('my-team-demo').addEventListener('click', loadDemoMyTeam);
   document.getElementById('my-team-gameweek').addEventListener('change', () => {
     if (document.getElementById('my-team-id').value.trim()) loadMyTeam();
   });
