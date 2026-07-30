@@ -178,8 +178,10 @@ app.MapGet("/api/transfer-suggestions", async (int teamId, int eventId, int? fix
         var squad = squadAnalysisService.AnalyzeSquad(bootstrap, fixtures, picks);
         var suggestions = transferPlannerService.SuggestTransfers(
             bootstrap, fixtures, squad, picks.EntryHistory.Bank, fixtureWeeks ?? 5, perPlayer ?? 3);
+        var fundedUpgrade = transferPlannerService.SuggestFundedUpgrade(
+            bootstrap, fixtures, squad, picks.EntryHistory.Bank, fixtureWeeks ?? 5);
 
-        return Results.Ok(new { teamId, eventId, available = true, suggestions });
+        return Results.Ok(new { teamId, eventId, available = true, suggestions, fundedUpgrade });
     })
     .WithName("GetTransferSuggestions");
 

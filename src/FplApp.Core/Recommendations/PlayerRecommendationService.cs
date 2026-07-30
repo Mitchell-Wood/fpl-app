@@ -43,7 +43,12 @@ public class PlayerRecommendationService
             .ToList();
     }
 
-    private static double Score(Player player, IReadOnlyDictionary<int, double> difficultyByTeam)
+    /// <summary>
+    /// Scores a player by recent form, points-per-cost, and upcoming fixture ease — exposed
+    /// internally so other services (e.g. <see cref="TransferPlannerService"/>) can compare a
+    /// currently-owned player against candidates on the same footing.
+    /// </summary>
+    internal static double Score(Player player, IReadOnlyDictionary<int, double> difficultyByTeam)
     {
         var form = ParseDecimal(player.Form);
         var costInMillions = player.NowCost / 10.0;

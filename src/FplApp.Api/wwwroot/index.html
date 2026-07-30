@@ -625,6 +625,7 @@
           gameweeks
         </label>
       </div>
+      <div id="funded-upgrade-card" style="display:none;margin-bottom:16px;"></div>
       <div id="transfer-suggestions-content"></div>
     </div>
 
@@ -1546,10 +1547,9 @@
   }
 
   function renderTransferSuggestions(suggestions) {
-    const section = document.getElementById('transfer-suggestions-section');
     const container = document.getElementById('transfer-suggestions-content');
     if (!suggestions.length) {
-      section.style.display = 'none';
+      container.innerHTML = '';
       return;
     }
     container.innerHTML = suggestions.map(s => {
@@ -1572,7 +1572,44 @@
         </div>
       `;
     }).join('');
-    section.style.display = '';
+  }
+
+  function fundedUpgradeLegHtml(leg) {
+    return `<strong>${escapeHtml(leg.outWebName)}</strong> <span class="muted">(${escapeHtml(leg.outTeamName)})</span>`
+      + ` &rarr; <strong>${escapeHtml(leg.inWebName)}</strong> <span class="muted">(${escapeHtml(leg.inTeamName)})</span>`;
+  }
+
+  function renderFundedUpgrade(fundedUpgrade) {
+    const card = document.getElementById('funded-upgrade-card');
+    if (!fundedUpgrade) {
+      card.style.display = 'none';
+      card.innerHTML = '';
+      return;
+    }
+    const { downgrade: d, upgrade: u, moneySaved } = fundedUpgrade;
+    card.innerHTML = `
+      <div class="lineup-card">
+        <div style="font-weight:700;margin-bottom:10px;">Funded upgrade idea</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;flex-wrap:wrap;gap:4px;">
+          <span>Downgrade: ${fundedUpgradeLegHtml(d)}</span>
+          <span class="num">£${(d.outNowCost / 10).toFixed(1)}m &rarr; £${(d.inNowCost / 10).toFixed(1)}m</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;flex-wrap:wrap;gap:4px;">
+          <span>Upgrade: ${fundedUpgradeLegHtml(u)}</span>
+          <span class="num">£${(u.outNowCost / 10).toFixed(1)}m &rarr; £${(u.inNowCost / 10).toFixed(1)}m</span>
+        </div>
+        <div class="muted" style="margin-top:8px;font-size:0.82rem;">
+          Selling ${escapeHtml(d.outWebName)} for ${escapeHtml(d.inWebName)} frees up £${(moneySaved / 10).toFixed(1)}m —
+          combined with your bank, that's what affords ${escapeHtml(u.inWebName)} (£${(u.inNowCost / 10).toFixed(1)}m)
+          in place of ${escapeHtml(u.outWebName)}, a bigger upgrade than ${escapeHtml(u.outWebName)}'s own budget could reach alone.
+        </div>
+      </div>
+    `;
+    card.style.display = '';
+  }
+
+  function updateTransferSectionVisibility(hasSuggestions, hasFundedUpgrade) {
+    document.getElementById('transfer-suggestions-section').style.display = (hasSuggestions || hasFundedUpgrade) ? '' : 'none';
   }
 
   function getTransferFixtureWeeks() {
@@ -1587,8 +1624,13 @@
       const res = await fetch(`/api/transfer-suggestions?teamId=${encodeURIComponent(teamId)}&eventId=${encodeURIComponent(eventId)}&fixtureWeeks=${getTransferFixtureWeeks()}`);
       if (!res.ok) return;
       const data = await res.json();
-      if (data.available) renderTransferSuggestions(data.suggestions);
-      else section.style.display = 'none';
+      if (data.available) {
+        renderTransferSuggestions(data.suggestions);
+        renderFundedUpgrade(data.fundedUpgrade);
+        updateTransferSectionVisibility(data.suggestions.length > 0, !!data.fundedUpgrade);
+      } else {
+        section.style.display = 'none';
+      }
     } catch (err) {
       // Leave the section as-is; the squad/captaincy/chip-strategy sections already loaded fine.
     }
@@ -1661,7 +1703,11 @@
 
       if (transferRes.ok) {
         const transferData = await transferRes.json();
-        if (transferData.available) renderTransferSuggestions(transferData.suggestions);
+        if (transferData.available) {
+          renderTransferSuggestions(transferData.suggestions);
+          renderFundedUpgrade(transferData.fundedUpgrade);
+          updateTransferSectionVisibility(transferData.suggestions.length > 0, !!transferData.fundedUpgrade);
+        }
       }
     } catch (err) {
       statusEl.textContent = 'Could not load your team: ' + err.message;
@@ -1787,33 +1833,108 @@
     return baseScore * fixtureFactor;
   }
 
+  // Considers every squad player (not just the ones with a flag) and only suggests a swap where
+  // the best affordable candidate genuinely outscores the current player — mirrors
+  // TransferPlannerService.SuggestTransfers so demo mode surfaces upgrades across all positions,
+  // capped to the biggest 5 real gains rather than every player in the squad.
   function buildDemoTransferSuggestions(picks, bankTenths, fixtureWeeks) {
     const squadIds = new Set(picks.map(p => p.playerId));
-    const outCandidates = picks.slice().sort((a, b) => b.avgUpcomingDifficulty - a.avgUpcomingDifficulty).slice(0, 2);
+    const elementsById = new Map(state.bootstrap.elements.map(p => [p.id, p]));
     const difficultyByTeam = avgUpcomingDifficultyByTeam(fixtureWeeks);
 
-    return outCandidates.map(outPick => {
-      const budgetAvailable = bankTenths + outPick.nowCost;
+    const scored = picks.map(pick => {
+      const currentPlayer = elementsById.get(pick.playerId);
+      if (!currentPlayer) return null;
+      const budgetAvailable = bankTenths + pick.nowCost;
       const candidates = state.bootstrap.elements
-        .filter(p => p.element_type === outPick.elementType && !squadIds.has(p.id) && p.status === 'a' && p.now_cost <= budgetAvailable)
+        .filter(p => p.element_type === pick.elementType && !squadIds.has(p.id) && p.status === 'a' && p.now_cost <= budgetAvailable)
         .sort((a, b) => scoreCandidate(b, difficultyByTeam) - scoreCandidate(a, difficultyByTeam))
-        .slice(0, 3)
-        .map(p => ({
-          webName: p.web_name,
-          teamName: teamName(p.team),
-          nowCost: p.now_cost,
-          form: parseFloat(p.form) || 0,
-          totalPoints: p.total_points,
-        }));
+        .slice(0, 3);
+      if (!candidates.length) return null;
+      const scoreGain = scoreCandidate(candidates[0], difficultyByTeam) - scoreCandidate(currentPlayer, difficultyByTeam);
+      if (scoreGain <= 0) return null;
+      return { pick, candidates, budgetAvailable, scoreGain };
+    }).filter(Boolean);
 
-      return {
-        outWebName: outPick.webName,
-        outTeamName: outPick.teamName,
-        outFlags: outPick.flags,
-        budgetAvailable,
-        candidates,
-      };
-    });
+    scored.sort((a, b) => b.scoreGain - a.scoreGain);
+
+    return scored.slice(0, 5).map(({ pick, candidates, budgetAvailable }) => ({
+      outWebName: pick.webName,
+      outTeamName: pick.teamName,
+      outFlags: pick.flags,
+      budgetAvailable,
+      candidates: candidates.map(p => ({
+        webName: p.web_name,
+        teamName: teamName(p.team),
+        nowCost: p.now_cost,
+        form: parseFloat(p.form) || 0,
+        totalPoints: p.total_points,
+      })),
+    }));
+  }
+
+  // Mirrors TransferPlannerService.SuggestFundedUpgrade: find the best pair of (slight downgrade,
+  // funded-by-it upgrade) across the squad, where the upgrade candidate genuinely needed the
+  // downgrade's freed-up money to be affordable.
+  function buildDemoFundedUpgrade(picks, bankTenths, fixtureWeeks) {
+    const squadIds = new Set(picks.map(p => p.playerId));
+    const elementsById = new Map(state.bootstrap.elements.map(p => [p.id, p]));
+    const difficultyByTeam = avgUpcomingDifficultyByTeam(fixtureWeeks);
+
+    const bestCandidate = (elementType, maxCost) => state.bootstrap.elements
+      .filter(p => p.element_type === elementType && !squadIds.has(p.id) && p.status === 'a' && p.now_cost <= maxCost)
+      .sort((a, b) => scoreCandidate(b, difficultyByTeam) - scoreCandidate(a, difficultyByTeam))[0] || null;
+
+    let best = null;
+    let bestNetGain = 0;
+
+    for (const downgradeFrom of picks) {
+      const downgradeFromPlayer = elementsById.get(downgradeFrom.playerId);
+      if (!downgradeFromPlayer) continue;
+      const downgradeTo = bestCandidate(downgradeFrom.elementType, downgradeFrom.nowCost - 1);
+      if (!downgradeTo) continue;
+      const moneySaved = downgradeFrom.nowCost - downgradeTo.now_cost;
+      if (moneySaved <= 0) continue;
+      const downgradeScoreDelta = scoreCandidate(downgradeTo, difficultyByTeam) - scoreCandidate(downgradeFromPlayer, difficultyByTeam);
+
+      for (const upgradeFrom of picks) {
+        if (upgradeFrom.playerId === downgradeFrom.playerId) continue;
+        const upgradeFromPlayer = elementsById.get(upgradeFrom.playerId);
+        if (!upgradeFromPlayer) continue;
+        const standaloneBudget = bankTenths + upgradeFrom.nowCost;
+        const fundedBudget = standaloneBudget + moneySaved;
+        const upgradeTo = bestCandidate(upgradeFrom.elementType, fundedBudget);
+        if (!upgradeTo || upgradeTo.now_cost <= standaloneBudget) continue;
+
+        const upgradeScoreDelta = scoreCandidate(upgradeTo, difficultyByTeam) - scoreCandidate(upgradeFromPlayer, difficultyByTeam);
+        const netGain = downgradeScoreDelta + upgradeScoreDelta;
+        if (netGain <= bestNetGain) continue;
+
+        bestNetGain = netGain;
+        best = {
+          moneySaved,
+          downgrade: {
+            outWebName: downgradeFrom.webName, outTeamName: downgradeFrom.teamName, outNowCost: downgradeFrom.nowCost,
+            inWebName: downgradeTo.web_name, inTeamName: teamName(downgradeTo.team), inNowCost: downgradeTo.now_cost,
+          },
+          upgrade: {
+            outWebName: upgradeFrom.webName, outTeamName: upgradeFrom.teamName, outNowCost: upgradeFrom.nowCost,
+            inWebName: upgradeTo.web_name, inTeamName: teamName(upgradeTo.team), inNowCost: upgradeTo.now_cost,
+          },
+        };
+      }
+    }
+
+    return best;
+  }
+
+  function renderDemoTransferSection(picks, bankTenths) {
+    const fixtureWeeks = getTransferFixtureWeeks();
+    const suggestions = buildDemoTransferSuggestions(picks, bankTenths, fixtureWeeks);
+    const fundedUpgrade = buildDemoFundedUpgrade(picks, bankTenths, fixtureWeeks);
+    renderTransferSuggestions(suggestions);
+    renderFundedUpgrade(fundedUpgrade);
+    updateTransferSectionVisibility(suggestions.length > 0, !!fundedUpgrade);
   }
 
   function loadDemoMyTeam() {
@@ -1837,7 +1958,7 @@
     tableWrap.style.display = '';
     renderChipStrategy(picks);
     renderCaptaincy(buildDemoCaptainSuggestions(picks));
-    renderTransferSuggestions(buildDemoTransferSuggestions(picks, bankTenths, getTransferFixtureWeeks()));
+    renderDemoTransferSection(picks, bankTenths);
   }
 
   // ---- Mini-Leagues ----
@@ -2159,7 +2280,7 @@
     if (state.myTeam.mode === 'real') {
       loadTransferSuggestions(state.myTeam.teamId, state.myTeam.eventId);
     } else {
-      renderTransferSuggestions(buildDemoTransferSuggestions(state.myTeam.picks, state.myTeam.bankTenths, getTransferFixtureWeeks()));
+      renderDemoTransferSection(state.myTeam.picks, state.myTeam.bankTenths);
     }
   });
   document.getElementById('ml-load-leagues').addEventListener('click', loadMyLeagues);
