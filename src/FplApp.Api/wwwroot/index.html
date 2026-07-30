@@ -359,6 +359,9 @@
             <th data-key="total_points" class="sortable num">Points</th>
             <th data-key="form" class="sortable num">Form</th>
             <th data-key="selected_by_percent" class="sortable num">Selected</th>
+            <th data-key="expected_goals" class="sortable num">xG</th>
+            <th data-key="expected_assists" class="sortable num">xA</th>
+            <th data-key="xgi_diff" class="sortable num" title="Actual goals + assists minus expected goal involvements">G+A vs xGI</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -473,6 +476,8 @@
             <th class="num">Form</th>
             <th class="num">Points</th>
             <th class="num">Selected</th>
+            <th class="num">xG</th>
+            <th class="num">xA</th>
             <th>Upcoming fixtures</th>
           </tr>
         </thead>
@@ -750,16 +755,24 @@
     const posFilter = document.getElementById('player-position').value;
     const elements = state.bootstrap.elements;
 
-    let rows = elements.map(p => ({
-      web_name: p.web_name,
-      team_name: teamName(p.team),
-      position: positionName(p.element_type),
-      element_type: p.element_type,
-      now_cost: p.now_cost / 10,
-      total_points: p.total_points,
-      form: parseFloat(p.form) || 0,
-      selected_by_percent: parseFloat(p.selected_by_percent) || 0,
-    }));
+    let rows = elements.map(p => {
+      const expectedGoals = parseFloat(p.expected_goals) || 0;
+      const expectedAssists = parseFloat(p.expected_assists) || 0;
+      const expectedGoalInvolvements = parseFloat(p.expected_goal_involvements) || 0;
+      return {
+        web_name: p.web_name,
+        team_name: teamName(p.team),
+        position: positionName(p.element_type),
+        element_type: p.element_type,
+        now_cost: p.now_cost / 10,
+        total_points: p.total_points,
+        form: parseFloat(p.form) || 0,
+        selected_by_percent: parseFloat(p.selected_by_percent) || 0,
+        expected_goals: expectedGoals,
+        expected_assists: expectedAssists,
+        xgi_diff: (p.goals_scored + p.assists) - expectedGoalInvolvements,
+      };
+    });
 
     if (posFilter) rows = rows.filter(r => String(r.element_type) === posFilter);
     if (search) rows = rows.filter(r => r.web_name.toLowerCase().includes(search));
@@ -785,8 +798,11 @@
         <td class="num">${r.total_points}</td>
         <td class="num">${r.form.toFixed(1)}</td>
         <td class="num">${r.selected_by_percent.toFixed(1)}%</td>
+        <td class="num">${r.expected_goals.toFixed(1)}</td>
+        <td class="num">${r.expected_assists.toFixed(1)}</td>
+        <td class="num">${r.xgi_diff > 0 ? '+' : ''}${r.xgi_diff.toFixed(1)}</td>
       </tr>
-    `).join('') || `<tr><td colspan="7" class="muted">No players match.</td></tr>`;
+    `).join('') || `<tr><td colspan="10" class="muted">No players match.</td></tr>`;
     updateSortArrows('players-table', state.playerSort);
   }
 
@@ -1019,7 +1035,7 @@
     const count = Math.min(50, Math.max(1, parseInt(document.getElementById('rec-count').value, 10) || 10));
     const fixtureWeeks = Math.min(20, Math.max(1, parseInt(document.getElementById('rec-fixture-weeks').value, 10) || 5));
     const tbody = document.querySelector('#recommendations-table tbody');
-    tbody.innerHTML = `<tr><td colspan="9" class="muted">Loading&hellip;</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="11" class="muted">Loading&hellip;</td></tr>`;
     try {
       const params = new URLSearchParams({ count, fixtureWeeks });
       if (posFilter) params.set('elementType', posFilter);
@@ -1037,11 +1053,13 @@
           <td class="num">${(parseFloat(p.form) || 0).toFixed(1)}</td>
           <td class="num">${p.total_points}</td>
           <td class="num">${(parseFloat(p.selected_by_percent) || 0).toFixed(1)}%</td>
+          <td class="num">${(parseFloat(p.expected_goals) || 0).toFixed(1)}</td>
+          <td class="num">${(parseFloat(p.expected_assists) || 0).toFixed(1)}</td>
           <td>${avgDifficultyChip(difficultyByTeam.get(p.team) ?? null)}</td>
         </tr>
-      `).join('') || `<tr><td colspan="9" class="muted">No players match.</td></tr>`;
+      `).join('') || `<tr><td colspan="11" class="muted">No players match.</td></tr>`;
     } catch (err) {
-      tbody.innerHTML = `<tr><td colspan="9" class="muted">Could not load recommendations: ${escapeHtml(err.message)}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="11" class="muted">Could not load recommendations: ${escapeHtml(err.message)}</td></tr>`;
     }
   }
 
