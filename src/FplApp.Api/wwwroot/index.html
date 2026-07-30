@@ -198,6 +198,9 @@
     background: var(--gridline);
     color: var(--text-secondary);
   }
+  .diff-double {
+    background: var(--series-1);
+  }
   .section-heading {
     font-size: 1rem;
     margin: 0 0 12px;
@@ -398,6 +401,20 @@
             <th>Upcoming fixtures</th>
             <th data-key="avg" class="sortable num">Avg difficulty</th>
           </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <h2 class="section-heading">Blank &amp; double gameweeks</h2>
+    <p class="subtitle" style="margin-top:-8px">
+      Scanned across the whole remaining season (not just the lookahead window above) — useful for
+      planning chip usage (Wildcard, Bench Boost, Triple Captain, Free Hit) well in advance.
+    </p>
+    <div class="table-wrap">
+      <table id="blank-double-table">
+        <thead>
+          <tr><th>Gameweek</th><th>Blank for</th><th>Double for</th></tr>
         </thead>
         <tbody></tbody>
       </table>
@@ -641,6 +658,7 @@
       renderTeams();
       renderFixtures();
       renderTicker();
+      renderBlankDoubleGameweeks();
       renderRecommendations();
       renderPriceWatch();
       renderSetPieces();
@@ -858,10 +876,47 @@
       if (!fixturesInGw.length) {
         return `<span class="diff-chip mini diff-blank" title="Blank gameweek">Blank</span>`;
       }
-      return fixturesInGw.map(f =>
+      const chips = fixturesInGw.map(f =>
         `<span class="diff-chip mini ${difficultyClass(f.difficulty)}" title="vs ${escapeHtml(f.opponent)} (${f.venue}) — ${DIFFICULTY_LABELS[f.difficulty]}">${escapeHtml(f.opponent)} (${f.venue}) ${f.difficulty}</span>`
       ).join('');
+      const doubleTag = fixturesInGw.length > 1
+        ? `<span class="diff-chip mini diff-double" title="Double gameweek">Double</span>`
+        : '';
+      return doubleTag + chips;
     }).join('');
+  }
+
+  // ---- Blank & double gameweeks (whole season) ----
+
+  function computeBlankDoubleGameweeks() {
+    const events = state.bootstrap.events.filter(e => !e.finished);
+    const results = [];
+    for (const event of events) {
+      const countByTeam = new Map(state.bootstrap.teams.map(t => [t.id, 0]));
+      for (const f of state.fixtures) {
+        if (f.event !== event.id) continue;
+        countByTeam.set(f.team_h, (countByTeam.get(f.team_h) || 0) + 1);
+        countByTeam.set(f.team_a, (countByTeam.get(f.team_a) || 0) + 1);
+      }
+      const blankTeams = [...countByTeam.entries()].filter(([, c]) => c === 0).map(([id]) => teamName(id));
+      const doubleTeams = [...countByTeam.entries()].filter(([, c]) => c >= 2).map(([id]) => teamName(id));
+      if (blankTeams.length || doubleTeams.length) {
+        results.push({ eventName: event.name, blankTeams, doubleTeams });
+      }
+    }
+    return results;
+  }
+
+  function renderBlankDoubleGameweeks() {
+    const tbody = document.querySelector('#blank-double-table tbody');
+    const rows = computeBlankDoubleGameweeks();
+    tbody.innerHTML = rows.map(r => `
+      <tr>
+        <td>${escapeHtml(r.eventName)}</td>
+        <td>${r.blankTeams.length ? r.blankTeams.map(escapeHtml).join(', ') : '<span class="muted">—</span>'}</td>
+        <td>${r.doubleTeams.length ? r.doubleTeams.map(escapeHtml).join(', ') : '<span class="muted">—</span>'}</td>
+      </tr>
+    `).join('') || `<tr><td colspan="3" class="muted">No blank or double gameweeks currently scheduled for the rest of the season.</td></tr>`;
   }
 
   // ---- Recommendations ----
