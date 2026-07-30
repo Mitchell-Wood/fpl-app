@@ -568,6 +568,7 @@
         <thead>
           <tr>
             <th>Team</th>
+            <th>Primary taker</th>
             <th>Penalties</th>
             <th>Direct free-kicks</th>
             <th>Corners &amp; indirect free-kicks</th>
@@ -992,12 +993,26 @@
     return list || '<span class="muted">—</span>';
   }
 
+  const SET_PIECE_ORDER_KEYS = ['penalties_order', 'direct_freekicks_order', 'corners_and_indirect_freekicks_order'];
+
+  function primarySetPieceTaker(players) {
+    const counts = players
+      .map(p => ({ name: p.web_name, count: SET_PIECE_ORDER_KEYS.filter(k => p[k] === 1).length }))
+      .filter(p => p.count > 0);
+    if (!counts.length) return '<span class="muted">—</span>';
+
+    const maxCount = Math.max(...counts.map(c => c.count));
+    const top = counts.filter(c => c.count === maxCount);
+    return escapeHtml(top.map(c => c.name).join(' & '));
+  }
+
   function renderSetPieces() {
     const tbody = document.querySelector('#set-pieces-table tbody');
     const rows = state.bootstrap.teams.map(team => {
       const players = state.bootstrap.elements.filter(p => p.team === team.id);
       return {
         name: team.name,
+        primaryTaker: primarySetPieceTaker(players),
         penalties: setPieceList(players, 'penalties_order'),
         directFreekicks: setPieceList(players, 'direct_freekicks_order'),
         corners: setPieceList(players, 'corners_and_indirect_freekicks_order'),
@@ -1007,6 +1022,7 @@
     tbody.innerHTML = rows.map(r => `
       <tr>
         <td>${escapeHtml(r.name)}</td>
+        <td><strong>${r.primaryTaker}</strong></td>
         <td>${r.penalties}</td>
         <td>${r.directFreekicks}</td>
         <td>${r.corners}</td>
