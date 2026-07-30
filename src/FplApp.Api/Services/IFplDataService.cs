@@ -9,4 +9,14 @@ public interface IFplDataService
 
     /// <summary>Gets all fixtures. Not cached, since scores and kickoff state change during play.</summary>
     Task<List<Fixture>> GetFixturesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Gets basic manager/team info, or null if the team id doesn't exist.</summary>
+    Task<TeamEntry?> GetEntryAsync(int teamId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets a manager's squad for a gameweek, or null if not found — which is the normal response
+    /// for the current gameweek before its deadline has passed, since FPL doesn't publish picks
+    /// early (so rivals can't scout your team before you're locked in).
+    /// </summary>
+    Task<TeamPicks?> GetPicksAsync(int teamId, int eventId, CancellationToken cancellationToken = default);
 }

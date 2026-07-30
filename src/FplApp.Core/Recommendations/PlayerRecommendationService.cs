@@ -25,7 +25,7 @@ public class PlayerRecommendationService
         ArgumentNullException.ThrowIfNull(bootstrap);
         ArgumentNullException.ThrowIfNull(fixtures);
 
-        var difficultyByTeam = ComputeUpcomingDifficultyByTeam(fixtures, fixtureLookaheadWeeks);
+        var difficultyByTeam = FixtureDifficultyCalculator.AverageUpcomingDifficultyByTeam(fixtures, fixtureLookaheadWeeks);
 
         var candidates = bootstrap.Elements
             .Where(p => p.Status == "a") // available (not injured/suspended/unavailable)
@@ -58,47 +58,6 @@ public class PlayerRecommendationService
         var fixtureFactor = (6.0 - avgDifficulty) / 3.0;
 
         return baseScore * fixtureFactor;
-    }
-
-    /// <summary>Average fixture difficulty per team over the next N unplayed gameweeks.</summary>
-    private static Dictionary<int, double> ComputeUpcomingDifficultyByTeam(IReadOnlyList<Fixture> fixtures, int lookaheadWeeks)
-    {
-        var nextEvent = fixtures
-            .Where(f => !f.Finished && f.Event.HasValue)
-            .Select(f => f.Event!.Value)
-            .DefaultIfEmpty()
-            .Min();
-
-        if (nextEvent == 0)
-        {
-            return [];
-        }
-
-        var lastEvent = nextEvent + lookaheadWeeks - 1;
-        var difficultiesByTeam = new Dictionary<int, List<int>>();
-
-        void AddDifficulty(int teamId, int difficulty)
-        {
-            if (!difficultiesByTeam.TryGetValue(teamId, out var list))
-            {
-                list = [];
-                difficultiesByTeam[teamId] = list;
-            }
-            list.Add(difficulty);
-        }
-
-        foreach (var fixture in fixtures)
-        {
-            if (fixture.Event is not { } eventId || eventId < nextEvent || eventId > lastEvent)
-            {
-                continue;
-            }
-
-            AddDifficulty(fixture.TeamH, fixture.TeamHDifficulty);
-            AddDifficulty(fixture.TeamA, fixture.TeamADifficulty);
-        }
-
-        return difficultiesByTeam.ToDictionary(kv => kv.Key, kv => kv.Value.Average());
     }
 
     private static double ParseDecimal(string value)

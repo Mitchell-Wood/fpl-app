@@ -120,6 +120,17 @@
     color: var(--text-primary);
   }
   .controls input { min-width: 200px; }
+  .controls button {
+    font: inherit;
+    font-weight: 600;
+    padding: 7px 14px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--series-1);
+    color: #ffffff;
+    cursor: pointer;
+  }
+  .controls button:hover { opacity: 0.9; }
   .table-wrap {
     overflow-x: auto;
     border: 1px solid var(--gridline);
@@ -272,6 +283,34 @@
   @media (max-width: 640px) {
     .lineup-teams { grid-template-columns: 1fr; }
   }
+  .captain-badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: var(--series-1);
+    color: #ffffff;
+  }
+  .bench-badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: var(--gridline);
+    color: var(--text-secondary);
+  }
+  .flag-chip {
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: var(--status-critical);
+    color: #ffffff;
+    margin: 1px 3px 1px 0;
+  }
   footer {
     text-align: center;
     color: var(--text-muted);
@@ -289,6 +328,7 @@
     <button data-panel="teams">Teams</button>
     <button data-panel="fixtures">Fixtures</button>
     <button data-panel="recommendations">Recommendations</button>
+    <button data-panel="my-team">My Team</button>
     <button data-panel="lineups">Predicted Lineups</button>
   </nav>
 </header>
@@ -421,6 +461,40 @@
     </div>
   </section>
 
+  <section id="my-team" class="panel">
+    <h2 class="section-heading">My Team</h2>
+    <p class="subtitle" style="margin-top:-8px">
+      Enter your FPL team ID to see your squad with flags for injuries, poor form, and tough upcoming
+      fixtures. Find your ID in the URL when viewing your team on the FPL site, e.g.
+      fantasy.premierleague.com/entry/<strong>1234567</strong>/event/1.
+    </p>
+    <div class="controls">
+      <input id="my-team-id" type="text" inputmode="numeric" placeholder="Team ID, e.g. 1234567" style="min-width:180px">
+      <select id="my-team-gameweek"></select>
+      <button id="my-team-load" type="button">Load team</button>
+    </div>
+    <div id="my-team-status" class="status-msg" style="display:none"></div>
+    <div id="my-team-summary" class="subtitle"></div>
+    <div class="table-wrap" id="my-team-table-wrap" style="display:none">
+      <table id="my-team-table">
+        <thead>
+          <tr>
+            <th>Player</th>
+            <th>Team</th>
+            <th>Pos</th>
+            <th></th>
+            <th class="num">Cost</th>
+            <th class="num">Form</th>
+            <th class="num">Points</th>
+            <th>Upcoming fixtures</th>
+            <th>Flags</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
   <section id="lineups" class="panel">
     <h2 class="section-heading">Predicted lineups</h2>
     <p class="subtitle" style="margin-top:-8px">
@@ -445,6 +519,7 @@
     teamSort: { key: 'position', dir: 'asc' },
     tickerSort: { key: 'avg', dir: 'asc' },
     lineupsLoaded: false,
+    myTeamLoaded: false,
   };
 
   const DIFFICULTY_LABELS = { 1: 'Very easy', 2: 'Easy', 3: 'Medium', 4: 'Hard', 5: 'Very hard' };
@@ -477,6 +552,7 @@
       initGameweekFilter();
       initLineupGameweekFilter();
       initRecPositionFilter();
+      initMyTeamGameweekFilter();
       renderPlayers();
       renderTeams();
       renderFixtures();
@@ -774,6 +850,108 @@
     }
   }
 
+  // ---- My Team ----
+
+  const MY_TEAM_ID_STORAGE_KEY = 'fplapp:teamId';
+
+  function initMyTeamGameweekFilter() {
+    const select = document.getElementById('my-team-gameweek');
+    const events = state.bootstrap.events;
+    select.innerHTML = '';
+    for (const e of events) {
+      const opt = document.createElement('option');
+      opt.value = e.id;
+      opt.textContent = e.name + (e.is_next ? ' (next)' : e.is_current ? ' (current)' : '');
+      if (e.is_next || e.is_current) opt.selected = true;
+      select.appendChild(opt);
+    }
+    if (!select.value && events.length) select.value = events[0].id;
+
+    const savedId = localStorage.getItem(MY_TEAM_ID_STORAGE_KEY);
+    if (savedId) {
+      document.getElementById('my-team-id').value = savedId;
+    }
+  }
+
+  function flagChip(flag) {
+    return `<span class="flag-chip">${escapeHtml(flag)}</span>`;
+  }
+
+  function renderMyTeamRows(picks) {
+    const tbody = document.querySelector('#my-team-table tbody');
+    tbody.innerHTML = picks.map(p => `
+      <tr>
+        <td>${escapeHtml(p.webName)}</td>
+        <td>${escapeHtml(p.teamName)}</td>
+        <td><span class="pos-chip">${escapeHtml(positionName(p.elementType))}</span></td>
+        <td>
+          ${p.isCaptain ? '<span class="captain-badge">C</span>' : ''}
+          ${p.isViceCaptain ? '<span class="captain-badge">VC</span>' : ''}
+          ${p.isBenched ? '<span class="bench-badge">Bench</span>' : ''}
+        </td>
+        <td class="num">£${(p.nowCost / 10).toFixed(1)}m</td>
+        <td class="num">${p.form.toFixed(1)}</td>
+        <td class="num">${p.totalPoints}</td>
+        <td>${avgDifficultyChip(p.avgUpcomingDifficulty)}</td>
+        <td>${p.flags.length ? p.flags.map(flagChip).join('') : '<span class="muted">—</span>'}</td>
+      </tr>
+    `).join('');
+  }
+
+  async function loadMyTeam() {
+    const teamIdInput = document.getElementById('my-team-id');
+    const teamId = teamIdInput.value.trim();
+    const eventId = document.getElementById('my-team-gameweek').value;
+    const statusEl = document.getElementById('my-team-status');
+    const summaryEl = document.getElementById('my-team-summary');
+    const tableWrap = document.getElementById('my-team-table-wrap');
+
+    statusEl.style.display = 'none';
+    summaryEl.textContent = '';
+    tableWrap.style.display = 'none';
+
+    if (!teamId || !/^\d+$/.test(teamId)) {
+      statusEl.textContent = 'Enter a numeric FPL team ID.';
+      statusEl.classList.remove('error');
+      statusEl.style.display = '';
+      return;
+    }
+
+    localStorage.setItem(MY_TEAM_ID_STORAGE_KEY, teamId);
+
+    statusEl.textContent = 'Loading your team…';
+    statusEl.classList.remove('error');
+    statusEl.style.display = '';
+
+    try {
+      const res = await fetch(`/api/my-team?teamId=${encodeURIComponent(teamId)}&eventId=${encodeURIComponent(eventId)}`);
+      if (res.status === 404) {
+        statusEl.textContent = 'No FPL team found with that ID. Double-check it from the FPL site URL.';
+        statusEl.classList.add('error');
+        return;
+      }
+      if (!res.ok) throw new Error('my-team ' + res.status);
+      const data = await res.json();
+
+      if (!data.available) {
+        statusEl.textContent = `${data.teamName} (${data.managerName}) — picks for this gameweek aren't public yet. `
+          + `FPL only publishes a team's picks once that gameweek's deadline has passed, to stop rivals scouting your squad early.`;
+        statusEl.classList.remove('error');
+        return;
+      }
+
+      statusEl.style.display = 'none';
+      summaryEl.textContent = `${data.teamName} (${data.managerName}) — ${data.points} pts this GW `
+        + `· Bank: £${data.bank.toFixed(1)}m · Squad value: £${data.value.toFixed(1)}m`;
+      renderMyTeamRows(data.picks);
+      tableWrap.style.display = '';
+    } catch (err) {
+      statusEl.textContent = 'Could not load your team: ' + err.message;
+      statusEl.classList.add('error');
+      statusEl.style.display = '';
+    }
+  }
+
   // ---- Predicted lineups ----
 
   function initLineupGameweekFilter() {
@@ -901,6 +1079,10 @@
           state.lineupsLoaded = true;
           renderLineups();
         }
+        if (btn.dataset.panel === 'my-team' && !state.myTeamLoaded && document.getElementById('my-team-id').value.trim()) {
+          state.myTeamLoaded = true;
+          loadMyTeam();
+        }
       });
     });
   }
@@ -915,6 +1097,13 @@
   document.getElementById('rec-position').addEventListener('change', renderRecommendations);
   document.getElementById('rec-count').addEventListener('input', renderRecommendations);
   document.getElementById('rec-fixture-weeks').addEventListener('input', renderRecommendations);
+  document.getElementById('my-team-load').addEventListener('click', loadMyTeam);
+  document.getElementById('my-team-gameweek').addEventListener('change', () => {
+    if (document.getElementById('my-team-id').value.trim()) loadMyTeam();
+  });
+  document.getElementById('my-team-id').addEventListener('keydown', e => {
+    if (e.key === 'Enter') loadMyTeam();
+  });
   loadData();
 </script>
 </body>

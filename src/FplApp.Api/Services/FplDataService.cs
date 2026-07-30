@@ -41,4 +41,28 @@ public class FplDataService : IFplDataService
         var result = await client.GetFromJsonAsync<List<Fixture>>("fixtures/", cancellationToken);
         return result ?? [];
     }
+
+    public async Task<TeamEntry?> GetEntryAsync(int teamId, CancellationToken cancellationToken = default)
+    {
+        var client = _httpClientFactory.CreateClient(HttpClientName);
+        var response = await client.GetAsync($"entry/{teamId}/", cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<TeamEntry>(cancellationToken);
+    }
+
+    public async Task<TeamPicks?> GetPicksAsync(int teamId, int eventId, CancellationToken cancellationToken = default)
+    {
+        var client = _httpClientFactory.CreateClient(HttpClientName);
+        var response = await client.GetAsync($"entry/{teamId}/event/{eventId}/picks/", cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<TeamPicks>(cancellationToken);
+    }
 }

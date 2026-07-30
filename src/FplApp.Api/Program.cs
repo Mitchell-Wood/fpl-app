@@ -30,6 +30,7 @@ builder.Services.AddHttpClient(FotMobLineupService.HttpClientName, client =>
 builder.Services.AddScoped<IFplDataService, FplDataService>();
 builder.Services.AddScoped<IFotMobLineupService, FotMobLineupService>();
 builder.Services.AddSingleton<PlayerRecommendationService>();
+builder.Services.AddSingleton<SquadAnalysisService>();
 
 var app = builder.Build();
 
@@ -83,5 +84,46 @@ app.MapGet("/api/player-recommendations", async (int? elementType, int? count, i
         return Results.Ok(recommendations);
     })
     .WithName("GetPlayerRecommendations");
+
+app.MapGet("/api/my-team", async (int teamId, int eventId, IFplDataService fplDataService, SquadAnalysisService squadAnalysisService, CancellationToken cancellationToken) =>
+    {
+        var entry = await fplDataService.GetEntryAsync(teamId, cancellationToken);
+        if (entry is null)
+        {
+            return Results.NotFound(new { message = "No FPL team found with that ID." });
+        }
+
+        var managerName = $"{entry.PlayerFirstName} {entry.PlayerLastName}".Trim();
+        var picks = await fplDataService.GetPicksAsync(teamId, eventId, cancellationToken);
+        if (picks is null)
+        {
+            return Results.Ok(new
+            {
+                teamId,
+                teamName = entry.Name,
+                managerName,
+                eventId,
+                available = false,
+            });
+        }
+
+        var bootstrap = await fplDataService.GetBootstrapStaticAsync(cancellationToken);
+        var fixtures = await fplDataService.GetFixturesAsync(cancellationToken);
+        var squad = squadAnalysisService.AnalyzeSquad(bootstrap, fixtures, picks);
+
+        return Results.Ok(new
+        {
+            teamId,
+            teamName = entry.Name,
+            managerName,
+            eventId,
+            available = true,
+            bank = picks.EntryHistory.Bank / 10.0,
+            value = picks.EntryHistory.Value / 10.0,
+            points = picks.EntryHistory.Points,
+            picks = squad,
+        });
+    })
+    .WithName("GetMyTeam");
 
 app.Run();
