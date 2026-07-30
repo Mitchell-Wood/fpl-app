@@ -500,6 +500,11 @@
       <div id="captaincy-list"></div>
     </div>
 
+    <div id="chip-strategy-section" style="display:none">
+      <h3 class="section-heading" style="font-size:0.95rem;margin-top:24px;">Chip strategy</h3>
+      <div id="chip-strategy-content" style="font-size:0.9rem;line-height:1.6;"></div>
+    </div>
+
     <div class="table-wrap" id="my-team-table-wrap" style="display:none">
       <table id="my-team-table">
         <thead>
@@ -1163,6 +1168,82 @@
     section.style.display = '';
   }
 
+  function computeChipStrategy(myTeamPicks) {
+    const ownedTeams = new Set(myTeamPicks.map(p => p.teamName));
+    const blankDoubleRows = computeBlankDoubleGameweeks();
+
+    const bbCandidates = blankDoubleRows
+      .map(r => ({ eventName: r.eventName, teams: r.doubleTeams.filter(t => ownedTeams.has(t)) }))
+      .filter(r => r.teams.length > 0)
+      .sort((a, b) => b.teams.length - a.teams.length)
+      .slice(0, 3);
+
+    const fhCandidates = blankDoubleRows
+      .map(r => ({ eventName: r.eventName, teams: r.blankTeams.filter(t => ownedTeams.has(t)) }))
+      .filter(r => r.teams.length > 0)
+      .sort((a, b) => b.teams.length - a.teams.length)
+      .slice(0, 3);
+
+    // Triple Captain: scan the next 10 upcoming gameweeks for the single best
+    // player+gameweek combo in your squad, using the same effective-form ×
+    // fixture-ease formula as the captaincy suggester, but per specific gameweek
+    // rather than an average — a double gameweek naturally scores higher since
+    // both fixtures' contributions are summed.
+    const upcomingEvents = state.bootstrap.events.filter(e => !e.finished).slice(0, 10);
+    let tcBest = null;
+    for (const event of upcomingEvents) {
+      for (const pick of myTeamPicks) {
+        const player = state.bootstrap.elements.find(e => e.id === pick.playerId);
+        if (!player || player.status !== 'a') continue;
+
+        const teamFixtures = state.fixtures.filter(f =>
+          f.event === event.id && (f.team_h === player.team || f.team_a === player.team));
+        if (!teamFixtures.length) continue;
+
+        const form = parseFloat(player.form) || 0;
+        const effectiveForm = form > 0 ? form : (parseFloat(player.points_per_game) || 0);
+        let expected = 0;
+        for (const f of teamFixtures) {
+          const isHome = f.team_h === player.team;
+          const difficulty = isHome ? f.team_h_difficulty : f.team_a_difficulty;
+          expected += effectiveForm * ((6 - difficulty) / 3);
+        }
+
+        if (!tcBest || expected > tcBest.expected) {
+          tcBest = { eventName: event.name, webName: pick.webName, expected, isDouble: teamFixtures.length > 1 };
+        }
+      }
+    }
+
+    return { bbCandidates, fhCandidates, tcBest };
+  }
+
+  function renderChipStrategy(myTeamPicks) {
+    const section = document.getElementById('chip-strategy-section');
+    const container = document.getElementById('chip-strategy-content');
+    const strategy = computeChipStrategy(myTeamPicks);
+
+    const describeCandidates = (candidates, label) => candidates.length
+      ? candidates.map(c => `${escapeHtml(c.eventName)} (${c.teams.length} of your teams: ${c.teams.map(escapeHtml).join(', ')})`).join('; ')
+      : `<span class="muted">No upcoming ${label} affecting your squad yet.</span>`;
+
+    const tcText = strategy.tcBest
+      ? `${escapeHtml(strategy.tcBest.webName)} in ${escapeHtml(strategy.tcBest.eventName)} — ${strategy.tcBest.expected.toFixed(1)} xPts${strategy.tcBest.isDouble ? ' (double gameweek)' : ''}`
+      : `<span class="muted">Not enough data yet to suggest a week.</span>`;
+
+    container.innerHTML = `
+      <p><strong>Bench Boost:</strong> ${describeCandidates(strategy.bbCandidates, 'double gameweeks')}</p>
+      <p><strong>Free Hit:</strong> ${describeCandidates(strategy.fhCandidates, 'blank gameweeks')}</p>
+      <p><strong>Triple Captain:</strong> ${tcText}</p>
+      <p class="muted" style="font-size:0.82rem;">
+        Wildcard timing depends more on squad needs (injuries, a tough fixture run) than a single
+        computable week — it's usually best used just before a double/blank swing above, or whenever
+        your squad needs a bigger rebuild.
+      </p>
+    `;
+    section.style.display = '';
+  }
+
   async function loadMyTeam() {
     const teamIdInput = document.getElementById('my-team-id');
     const teamId = teamIdInput.value.trim();
@@ -1171,11 +1252,13 @@
     const summaryEl = document.getElementById('my-team-summary');
     const tableWrap = document.getElementById('my-team-table-wrap');
     const captaincySection = document.getElementById('captaincy-section');
+    const chipStrategySection = document.getElementById('chip-strategy-section');
 
     statusEl.style.display = 'none';
     summaryEl.textContent = '';
     tableWrap.style.display = 'none';
     captaincySection.style.display = 'none';
+    chipStrategySection.style.display = 'none';
 
     if (!teamId || !/^\d+$/.test(teamId)) {
       statusEl.textContent = 'Enter a numeric FPL team ID.';
@@ -1215,6 +1298,7 @@
         + `· Bank: £${data.bank.toFixed(1)}m · Squad value: £${data.value.toFixed(1)}m`;
       renderMyTeamRows(data.picks);
       tableWrap.style.display = '';
+      renderChipStrategy(data.picks);
 
       if (captainRes.ok) {
         const captainData = await captainRes.json();
