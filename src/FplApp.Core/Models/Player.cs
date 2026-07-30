@@ -123,4 +123,22 @@ public class Player
     /// <summary>Price change since the start of the season, in tenths of a million.</summary>
     [JsonPropertyName("cost_change_start")]
     public int CostChangeStart { get; set; }
+
+    [JsonPropertyName("penalties_order")]
+    public int? PenaltiesOrder { get; set; }
+
+    [JsonPropertyName("penalties_text")]
+    public string PenaltiesText { get; set; } = string.Empty;
+
+    [JsonPropertyName("direct_freekicks_order")]
+    public int? DirectFreekicksOrder { get; set; }
+
+    [JsonPropertyName("direct_freekicks_text")]
+    public string DirectFreekicksText { get; set; } = string.Empty;
+
+    [JsonPropertyName("corners_and_indirect_freekicks_order")]
+    public int? CornersAndIndirectFreekicksOrder { get; set; }
+
+    [JsonPropertyName("corners_and_indirect_freekicks_text")]
+    public string CornersAndIndirectFreekicksText { get; set; } = string.Empty;
 }

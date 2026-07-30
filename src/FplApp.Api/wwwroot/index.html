@@ -330,6 +330,7 @@
     <button data-panel="recommendations">Recommendations</button>
     <button data-panel="my-team">My Team</button>
     <button data-panel="price-watch">Price Watch</button>
+    <button data-panel="set-pieces">Set Pieces</button>
     <button data-panel="lineups">Predicted Lineups</button>
   </nav>
 </header>
@@ -556,6 +557,27 @@
     </div>
   </section>
 
+  <section id="set-pieces" class="panel">
+    <h2 class="section-heading">Set piece takers</h2>
+    <p class="subtitle" style="margin-top:-8px">
+      Each club's designated order for penalties, direct free-kicks, and corners/indirect free-kicks —
+      a strong signal for a player's realistic goal-scoring upside beyond open play.
+    </p>
+    <div class="table-wrap">
+      <table id="set-pieces-table">
+        <thead>
+          <tr>
+            <th>Team</th>
+            <th>Penalties</th>
+            <th>Direct free-kicks</th>
+            <th>Corners &amp; indirect free-kicks</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
   <section id="lineups" class="panel">
     <h2 class="section-heading">Predicted lineups</h2>
     <p class="subtitle" style="margin-top:-8px">
@@ -620,6 +642,7 @@
       renderTicker();
       renderRecommendations();
       renderPriceWatch();
+      renderSetPieces();
     } catch (err) {
       statusEl.textContent = 'Could not load FPL data: ' + err.message;
       statusEl.classList.add('error');
@@ -956,6 +979,39 @@
         tbody.innerHTML = `<tr><td colspan="6" class="muted">Could not load: ${escapeHtml(err.message)}</td></tr>`;
       }
     }
+  }
+
+  // ---- Set piece takers ----
+
+  function setPieceList(players, orderKey) {
+    const list = players
+      .filter(p => p[orderKey] != null)
+      .sort((a, b) => a[orderKey] - b[orderKey])
+      .map(p => `${p[orderKey]}. ${escapeHtml(p.web_name)}`)
+      .join(', ');
+    return list || '<span class="muted">—</span>';
+  }
+
+  function renderSetPieces() {
+    const tbody = document.querySelector('#set-pieces-table tbody');
+    const rows = state.bootstrap.teams.map(team => {
+      const players = state.bootstrap.elements.filter(p => p.team === team.id);
+      return {
+        name: team.name,
+        penalties: setPieceList(players, 'penalties_order'),
+        directFreekicks: setPieceList(players, 'direct_freekicks_order'),
+        corners: setPieceList(players, 'corners_and_indirect_freekicks_order'),
+      };
+    });
+    rows.sort((a, b) => a.name.localeCompare(b.name));
+    tbody.innerHTML = rows.map(r => `
+      <tr>
+        <td>${escapeHtml(r.name)}</td>
+        <td>${r.penalties}</td>
+        <td>${r.directFreekicks}</td>
+        <td>${r.corners}</td>
+      </tr>
+    `).join('');
   }
 
   // ---- My Team ----
