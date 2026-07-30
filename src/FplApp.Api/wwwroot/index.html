@@ -475,6 +475,12 @@
     </div>
     <div id="my-team-status" class="status-msg" style="display:none"></div>
     <div id="my-team-summary" class="subtitle"></div>
+
+    <div id="captaincy-section" style="display:none">
+      <h3 class="section-heading" style="font-size:0.95rem;margin-top:24px;">Captaincy suggestion</h3>
+      <div id="captaincy-list"></div>
+    </div>
+
     <div class="table-wrap" id="my-team-table-wrap" style="display:none">
       <table id="my-team-table">
         <thead>
@@ -898,6 +904,36 @@
     `).join('');
   }
 
+  function renderCaptaincy(suggestions) {
+    const section = document.getElementById('captaincy-section');
+    const container = document.getElementById('captaincy-list');
+    if (!suggestions.length) {
+      section.style.display = 'none';
+      return;
+    }
+    container.innerHTML = suggestions.map((s, i) => {
+      const fixturesText = s.fixtures.length
+        ? s.fixtures.map(f => `vs ${escapeHtml(f.opponent)} (${f.venue}) ${diffChip(f.difficulty)}`).join(' &nbsp; ')
+        : '<span class="muted">No fixture</span>';
+      const tags = [];
+      if (i === 0) tags.push('<span class="captain-badge">Suggested</span>');
+      if (s.isCurrentCaptain) tags.push('<span class="bench-badge">Your C</span>');
+      if (s.isCurrentViceCaptain) tags.push('<span class="bench-badge">Your VC</span>');
+      const note = s.note ? `<span class="muted"> (${escapeHtml(s.note)})</span>` : '';
+      return `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--gridline);">
+          <div>
+            <strong>${i + 1}. ${escapeHtml(s.webName)}</strong> <span class="muted">(${escapeHtml(s.teamName)})</span>
+            ${tags.join(' ')}${note}
+            <div class="muted" style="font-size:0.85rem;margin-top:2px;">${fixturesText}</div>
+          </div>
+          <div class="num" style="font-weight:600;white-space:nowrap;">${s.expectedPoints.toFixed(1)} xPts</div>
+        </div>
+      `;
+    }).join('');
+    section.style.display = '';
+  }
+
   async function loadMyTeam() {
     const teamIdInput = document.getElementById('my-team-id');
     const teamId = teamIdInput.value.trim();
@@ -905,10 +941,12 @@
     const statusEl = document.getElementById('my-team-status');
     const summaryEl = document.getElementById('my-team-summary');
     const tableWrap = document.getElementById('my-team-table-wrap');
+    const captaincySection = document.getElementById('captaincy-section');
 
     statusEl.style.display = 'none';
     summaryEl.textContent = '';
     tableWrap.style.display = 'none';
+    captaincySection.style.display = 'none';
 
     if (!teamId || !/^\d+$/.test(teamId)) {
       statusEl.textContent = 'Enter a numeric FPL team ID.';
@@ -924,14 +962,17 @@
     statusEl.style.display = '';
 
     try {
-      const res = await fetch(`/api/my-team?teamId=${encodeURIComponent(teamId)}&eventId=${encodeURIComponent(eventId)}`);
-      if (res.status === 404) {
+      const [teamRes, captainRes] = await Promise.all([
+        fetch(`/api/my-team?teamId=${encodeURIComponent(teamId)}&eventId=${encodeURIComponent(eventId)}`),
+        fetch(`/api/captain-suggestions?teamId=${encodeURIComponent(teamId)}&eventId=${encodeURIComponent(eventId)}`),
+      ]);
+      if (teamRes.status === 404) {
         statusEl.textContent = 'No FPL team found with that ID. Double-check it from the FPL site URL.';
         statusEl.classList.add('error');
         return;
       }
-      if (!res.ok) throw new Error('my-team ' + res.status);
-      const data = await res.json();
+      if (!teamRes.ok) throw new Error('my-team ' + teamRes.status);
+      const data = await teamRes.json();
 
       if (!data.available) {
         statusEl.textContent = `${data.teamName} (${data.managerName}) — picks for this gameweek aren't public yet. `
@@ -945,6 +986,11 @@
         + `· Bank: £${data.bank.toFixed(1)}m · Squad value: £${data.value.toFixed(1)}m`;
       renderMyTeamRows(data.picks);
       tableWrap.style.display = '';
+
+      if (captainRes.ok) {
+        const captainData = await captainRes.json();
+        if (captainData.available) renderCaptaincy(captainData.suggestions);
+      }
     } catch (err) {
       statusEl.textContent = 'Could not load your team: ' + err.message;
       statusEl.classList.add('error');

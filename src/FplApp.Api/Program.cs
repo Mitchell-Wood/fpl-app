@@ -31,6 +31,7 @@ builder.Services.AddScoped<IFplDataService, FplDataService>();
 builder.Services.AddScoped<IFotMobLineupService, FotMobLineupService>();
 builder.Services.AddSingleton<PlayerRecommendationService>();
 builder.Services.AddSingleton<SquadAnalysisService>();
+builder.Services.AddSingleton<CaptaincyService>();
 
 var app = builder.Build();
 
@@ -125,5 +126,27 @@ app.MapGet("/api/my-team", async (int teamId, int eventId, IFplDataService fplDa
         });
     })
     .WithName("GetMyTeam");
+
+app.MapGet("/api/captain-suggestions", async (int teamId, int eventId, IFplDataService fplDataService, CaptaincyService captaincyService, CancellationToken cancellationToken) =>
+    {
+        var entry = await fplDataService.GetEntryAsync(teamId, cancellationToken);
+        if (entry is null)
+        {
+            return Results.NotFound(new { message = "No FPL team found with that ID." });
+        }
+
+        var picks = await fplDataService.GetPicksAsync(teamId, eventId, cancellationToken);
+        if (picks is null)
+        {
+            return Results.Ok(new { teamId, eventId, available = false });
+        }
+
+        var bootstrap = await fplDataService.GetBootstrapStaticAsync(cancellationToken);
+        var fixtures = await fplDataService.GetFixturesAsync(cancellationToken);
+        var suggestions = captaincyService.SuggestCaptains(bootstrap, fixtures, picks, eventId);
+
+        return Results.Ok(new { teamId, eventId, available = true, suggestions });
+    })
+    .WithName("GetCaptainSuggestions");
 
 app.Run();
