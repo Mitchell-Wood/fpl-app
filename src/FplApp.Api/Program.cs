@@ -1,4 +1,5 @@
 using FplApp.Api.Services;
+using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -25,7 +26,17 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
-app.UseHttpsRedirection();
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+});
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
+// In production this runs behind a proxy (e.g. Render) that terminates TLS
+// and forwards plain HTTP, so HTTPS redirection is skipped to avoid a loop.
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
