@@ -75,10 +75,11 @@ app.MapGet("/api/predicted-lineups", async (int eventId, IFotMobLineupService li
     })
     .WithName("GetPredictedLineups");
 
-app.MapGet("/api/player-recommendations", async (int? elementType, int? count, IFplDataService fplDataService, PlayerRecommendationService recommendationService, CancellationToken cancellationToken) =>
+app.MapGet("/api/player-recommendations", async (int? elementType, int? count, int? fixtureWeeks, IFplDataService fplDataService, PlayerRecommendationService recommendationService, CancellationToken cancellationToken) =>
     {
         var bootstrap = await fplDataService.GetBootstrapStaticAsync(cancellationToken);
-        var recommendations = recommendationService.RecommendPlayers(bootstrap, elementType, count ?? 10);
+        var fixtures = await fplDataService.GetFixturesAsync(cancellationToken);
+        var recommendations = recommendationService.RecommendPlayers(bootstrap, fixtures, elementType, count ?? 10, fixtureWeeks ?? 5);
         return Results.Ok(recommendations);
     })
     .WithName("GetPlayerRecommendations");
