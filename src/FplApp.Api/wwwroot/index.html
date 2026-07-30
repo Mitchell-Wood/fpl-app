@@ -288,6 +288,7 @@
     <button data-panel="players" class="active">Players</button>
     <button data-panel="teams">Teams</button>
     <button data-panel="fixtures">Fixtures</button>
+    <button data-panel="recommendations">Recommendations</button>
     <button data-panel="lineups">Predicted Lineups</button>
   </nav>
 </header>
@@ -382,6 +383,38 @@
     </div>
   </section>
 
+  <section id="recommendations" class="panel">
+    <h2 class="section-heading">Players to consider buying</h2>
+    <p class="subtitle" style="margin-top:-8px">
+      Ranked by recent form and points-per-cost among available (non-injured/suspended) players.
+    </p>
+    <div class="controls">
+      <select id="rec-position">
+        <option value="">All positions</option>
+      </select>
+      <label class="inline-label" for="rec-count">Show top
+        <input id="rec-count" type="number" min="1" max="50" value="10">
+      </label>
+    </div>
+    <div class="table-wrap">
+      <table id="recommendations-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Player</th>
+            <th>Team</th>
+            <th>Pos</th>
+            <th class="num">Cost</th>
+            <th class="num">Form</th>
+            <th class="num">Points</th>
+            <th class="num">Selected</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
   <section id="lineups" class="panel">
     <h2 class="section-heading">Predicted lineups</h2>
     <p class="subtitle" style="margin-top:-8px">
@@ -437,10 +470,12 @@
       initPositionFilter();
       initGameweekFilter();
       initLineupGameweekFilter();
+      initRecPositionFilter();
       renderPlayers();
       renderTeams();
       renderFixtures();
       renderTicker();
+      renderRecommendations();
     } catch (err) {
       statusEl.textContent = 'Could not load FPL data: ' + err.message;
       statusEl.classList.add('error');
@@ -661,6 +696,47 @@
     }).join('');
   }
 
+  // ---- Recommendations ----
+
+  function initRecPositionFilter() {
+    const select = document.getElementById('rec-position');
+    const types = state.bootstrap.element_types ?? [];
+    for (const t of types) {
+      const opt = document.createElement('option');
+      opt.value = t.id;
+      opt.textContent = t.plural_name;
+      select.appendChild(opt);
+    }
+  }
+
+  async function renderRecommendations() {
+    const posFilter = document.getElementById('rec-position').value;
+    const count = Math.min(50, Math.max(1, parseInt(document.getElementById('rec-count').value, 10) || 10));
+    const tbody = document.querySelector('#recommendations-table tbody');
+    tbody.innerHTML = `<tr><td colspan="8" class="muted">Loading&hellip;</td></tr>`;
+    try {
+      const params = new URLSearchParams({ count });
+      if (posFilter) params.set('elementType', posFilter);
+      const res = await fetch(`/api/player-recommendations?${params}`);
+      if (!res.ok) throw new Error('player-recommendations ' + res.status);
+      const players = await res.json();
+      tbody.innerHTML = players.map((p, i) => `
+        <tr>
+          <td class="num">${i + 1}</td>
+          <td>${escapeHtml(p.web_name)}</td>
+          <td>${escapeHtml(teamName(p.team))}</td>
+          <td><span class="pos-chip">${escapeHtml(positionName(p.element_type))}</span></td>
+          <td class="num">£${(p.now_cost / 10).toFixed(1)}m</td>
+          <td class="num">${(parseFloat(p.form) || 0).toFixed(1)}</td>
+          <td class="num">${p.total_points}</td>
+          <td class="num">${(parseFloat(p.selected_by_percent) || 0).toFixed(1)}%</td>
+        </tr>
+      `).join('') || `<tr><td colspan="8" class="muted">No players match.</td></tr>`;
+    } catch (err) {
+      tbody.innerHTML = `<tr><td colspan="8" class="muted">Could not load recommendations: ${escapeHtml(err.message)}</td></tr>`;
+    }
+  }
+
   // ---- Predicted lineups ----
 
   function initLineupGameweekFilter() {
@@ -799,6 +875,8 @@
   document.getElementById('player-position').addEventListener('change', renderPlayers);
   wireSorting('ticker-table', state.tickerSort, renderTicker);
   document.getElementById('ticker-weeks').addEventListener('input', renderTicker);
+  document.getElementById('rec-position').addEventListener('change', renderRecommendations);
+  document.getElementById('rec-count').addEventListener('input', renderRecommendations);
   loadData();
 </script>
 </body>

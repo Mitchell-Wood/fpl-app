@@ -1,5 +1,6 @@
 using FplApp.Api.Services;
 using FplApp.Api.Services.FotMob;
+using FplApp.Core.Recommendations;
 using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -28,6 +29,7 @@ builder.Services.AddHttpClient(FotMobLineupService.HttpClientName, client =>
 
 builder.Services.AddScoped<IFplDataService, FplDataService>();
 builder.Services.AddScoped<IFotMobLineupService, FotMobLineupService>();
+builder.Services.AddSingleton<PlayerRecommendationService>();
 
 var app = builder.Build();
 
@@ -72,5 +74,13 @@ app.MapGet("/api/predicted-lineups", async (int eventId, IFotMobLineupService li
         return Results.Ok(data);
     })
     .WithName("GetPredictedLineups");
+
+app.MapGet("/api/player-recommendations", async (int? elementType, int? count, IFplDataService fplDataService, PlayerRecommendationService recommendationService, CancellationToken cancellationToken) =>
+    {
+        var bootstrap = await fplDataService.GetBootstrapStaticAsync(cancellationToken);
+        var recommendations = recommendationService.RecommendPlayers(bootstrap, elementType, count ?? 10);
+        return Results.Ok(recommendations);
+    })
+    .WithName("GetPlayerRecommendations");
 
 app.Run();
