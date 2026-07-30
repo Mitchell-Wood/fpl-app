@@ -1302,11 +1302,15 @@
 
   // ---- Set piece takers ----
 
+  // FPL's raw *_order fields aren't guaranteed to start at 1 for every team (e.g. a team's
+  // corners_and_indirect_freekicks_order can run 5,6,7,8 instead of 1,2,3,4) — the values are only
+  // meaningful relative to each other within a team/category. So sort by the raw value to get the
+  // correct ranking, but display our own 1-based position rather than the raw number.
   function setPieceList(players, orderKey) {
     const list = players
       .filter(p => p[orderKey] != null)
       .sort((a, b) => a[orderKey] - b[orderKey])
-      .map(p => `${p[orderKey]}. ${escapeHtml(p.web_name)}`)
+      .map((p, i) => `${i + 1}. ${escapeHtml(p.web_name)}`)
       .join(', ');
     return list || '<span class="muted">—</span>';
   }
@@ -1314,8 +1318,17 @@
   const SET_PIECE_ORDER_KEYS = ['penalties_order', 'direct_freekicks_order', 'corners_and_indirect_freekicks_order'];
 
   function primarySetPieceTaker(players) {
+    // "Top of the list" per category means holding that category's lowest raw order value, not
+    // literally === 1 — see the note on setPieceList above.
+    const minByKey = SET_PIECE_ORDER_KEYS.map(key => {
+      const values = players.map(p => p[key]).filter(v => v != null);
+      return values.length ? Math.min(...values) : null;
+    });
     const counts = players
-      .map(p => ({ name: p.web_name, count: SET_PIECE_ORDER_KEYS.filter(k => p[k] === 1).length }))
+      .map(p => ({
+        name: p.web_name,
+        count: SET_PIECE_ORDER_KEYS.filter((k, i) => minByKey[i] != null && p[k] === minByKey[i]).length,
+      }))
       .filter(p => p.count > 0);
     if (!counts.length) return '<span class="muted">—</span>';
 
