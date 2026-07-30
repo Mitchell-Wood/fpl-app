@@ -329,6 +329,7 @@
     <button data-panel="fixtures">Fixtures</button>
     <button data-panel="recommendations">Recommendations</button>
     <button data-panel="my-team">My Team</button>
+    <button data-panel="price-watch">Price Watch</button>
     <button data-panel="lineups">Predicted Lineups</button>
   </nav>
 </header>
@@ -501,6 +502,60 @@
     </div>
   </section>
 
+  <section id="price-watch" class="panel">
+    <h2 class="section-heading">Price watch</h2>
+    <p class="subtitle" style="margin-top:-8px">
+      FPL doesn't publish the exact thresholds it uses to trigger a price change, so this doesn't
+      guess one — it shows players whose price has already moved today, plus not-yet-moved players
+      with the heaviest transfer momentum (the leading signal a change is more likely soon).
+    </p>
+    <div class="controls">
+      <label class="inline-label" for="price-watch-count">Show top
+        <input id="price-watch-count" type="number" min="1" max="50" value="15">
+      </label>
+    </div>
+
+    <h3 class="section-heading" style="font-size:0.95rem;">Risen today</h3>
+    <div class="table-wrap">
+      <table id="price-risers-table">
+        <thead>
+          <tr><th>Player</th><th>Team</th><th>Pos</th><th class="num">Cost</th><th class="num">Change today</th><th class="num">Selected</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <h3 class="section-heading" style="font-size:0.95rem;">Fallen today</h3>
+    <div class="table-wrap">
+      <table id="price-fallers-table">
+        <thead>
+          <tr><th>Player</th><th>Team</th><th>Pos</th><th class="num">Cost</th><th class="num">Change today</th><th class="num">Selected</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <h3 class="section-heading" style="font-size:0.95rem;">Trending in (rise watch)</h3>
+    <div class="table-wrap">
+      <table id="price-trending-in-table">
+        <thead>
+          <tr><th>Player</th><th>Team</th><th>Pos</th><th class="num">Cost</th><th class="num">Net transfers</th><th class="num">Selected</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <h3 class="section-heading" style="font-size:0.95rem;">Trending out (fall watch)</h3>
+    <div class="table-wrap">
+      <table id="price-trending-out-table">
+        <thead>
+          <tr><th>Player</th><th>Team</th><th>Pos</th><th class="num">Cost</th><th class="num">Net transfers</th><th class="num">Selected</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
   <section id="lineups" class="panel">
     <h2 class="section-heading">Predicted lineups</h2>
     <p class="subtitle" style="margin-top:-8px">
@@ -564,6 +619,7 @@
       renderFixtures();
       renderTicker();
       renderRecommendations();
+      renderPriceWatch();
     } catch (err) {
       statusEl.textContent = 'Could not load FPL data: ' + err.message;
       statusEl.classList.add('error');
@@ -856,6 +912,52 @@
     }
   }
 
+  // ---- Price watch ----
+
+  function priceWatchRow(p, changeValue) {
+    return `
+      <tr>
+        <td>${escapeHtml(p.webName)}</td>
+        <td>${escapeHtml(p.teamName)}</td>
+        <td><span class="pos-chip">${escapeHtml(positionName(p.elementType))}</span></td>
+        <td class="num">£${(p.nowCost / 10).toFixed(1)}m</td>
+        <td class="num">${changeValue}</td>
+        <td class="num">${p.selectedByPercent.toFixed(1)}%</td>
+      </tr>
+    `;
+  }
+
+  async function renderPriceWatch() {
+    const count = Math.min(50, Math.max(1, parseInt(document.getElementById('price-watch-count').value, 10) || 15));
+    const tables = {
+      risers: document.querySelector('#price-risers-table tbody'),
+      fallers: document.querySelector('#price-fallers-table tbody'),
+      trendingIn: document.querySelector('#price-trending-in-table tbody'),
+      trendingOut: document.querySelector('#price-trending-out-table tbody'),
+    };
+    for (const tbody of Object.values(tables)) {
+      tbody.innerHTML = `<tr><td colspan="6" class="muted">Loading&hellip;</td></tr>`;
+    }
+    try {
+      const res = await fetch(`/api/price-watch?count=${count}`);
+      if (!res.ok) throw new Error('price-watch ' + res.status);
+      const data = await res.json();
+
+      tables.risers.innerHTML = data.risersToday.map(p => priceWatchRow(p, `+£${(p.costChangeEventTenths / 10).toFixed(1)}m`)).join('')
+        || `<tr><td colspan="6" class="muted">No price rises today.</td></tr>`;
+      tables.fallers.innerHTML = data.fallersToday.map(p => priceWatchRow(p, `-£${(Math.abs(p.costChangeEventTenths) / 10).toFixed(1)}m`)).join('')
+        || `<tr><td colspan="6" class="muted">No price falls today.</td></tr>`;
+      tables.trendingIn.innerHTML = data.trendingIn.map(p => priceWatchRow(p, `+${p.netTransfersEvent.toLocaleString()}`)).join('')
+        || `<tr><td colspan="6" class="muted">No standout transfer activity.</td></tr>`;
+      tables.trendingOut.innerHTML = data.trendingOut.map(p => priceWatchRow(p, p.netTransfersEvent.toLocaleString())).join('')
+        || `<tr><td colspan="6" class="muted">No standout transfer activity.</td></tr>`;
+    } catch (err) {
+      for (const tbody of Object.values(tables)) {
+        tbody.innerHTML = `<tr><td colspan="6" class="muted">Could not load: ${escapeHtml(err.message)}</td></tr>`;
+      }
+    }
+  }
+
   // ---- My Team ----
 
   const MY_TEAM_ID_STORAGE_KEY = 'fplapp:teamId';
@@ -1143,6 +1245,7 @@
   document.getElementById('rec-position').addEventListener('change', renderRecommendations);
   document.getElementById('rec-count').addEventListener('input', renderRecommendations);
   document.getElementById('rec-fixture-weeks').addEventListener('input', renderRecommendations);
+  document.getElementById('price-watch-count').addEventListener('input', renderPriceWatch);
   document.getElementById('my-team-load').addEventListener('click', loadMyTeam);
   document.getElementById('my-team-gameweek').addEventListener('change', () => {
     if (document.getElementById('my-team-id').value.trim()) loadMyTeam();

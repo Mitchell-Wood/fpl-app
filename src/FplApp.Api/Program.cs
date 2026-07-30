@@ -32,6 +32,7 @@ builder.Services.AddScoped<IFotMobLineupService, FotMobLineupService>();
 builder.Services.AddSingleton<PlayerRecommendationService>();
 builder.Services.AddSingleton<SquadAnalysisService>();
 builder.Services.AddSingleton<CaptaincyService>();
+builder.Services.AddSingleton<PriceChangeWatchService>();
 
 var app = builder.Build();
 
@@ -148,5 +149,13 @@ app.MapGet("/api/captain-suggestions", async (int teamId, int eventId, IFplDataS
         return Results.Ok(new { teamId, eventId, available = true, suggestions });
     })
     .WithName("GetCaptainSuggestions");
+
+app.MapGet("/api/price-watch", async (int? count, IFplDataService fplDataService, PriceChangeWatchService priceChangeWatchService, CancellationToken cancellationToken) =>
+    {
+        var bootstrap = await fplDataService.GetBootstrapStaticAsync(cancellationToken);
+        var result = priceChangeWatchService.GetPriceWatch(bootstrap, count ?? 15);
+        return Results.Ok(result);
+    })
+    .WithName("GetPriceWatch");
 
 app.Run();

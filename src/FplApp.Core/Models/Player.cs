@@ -109,4 +109,18 @@ public class Player
 
     [JsonPropertyName("chance_of_playing_next_round")]
     public int? ChanceOfPlayingNextRound { get; set; }
+
+    [JsonPropertyName("transfers_in_event")]
+    public int TransfersInEvent { get; set; }
+
+    [JsonPropertyName("transfers_out_event")]
+    public int TransfersOutEvent { get; set; }
+
+    /// <summary>Price change so far today, in tenths of a million (e.g. 1 = risen £0.1m).</summary>
+    [JsonPropertyName("cost_change_event")]
+    public int CostChangeEvent { get; set; }
+
+    /// <summary>Price change since the start of the season, in tenths of a million.</summary>
+    [JsonPropertyName("cost_change_start")]
+    public int CostChangeStart { get; set; }
 }
