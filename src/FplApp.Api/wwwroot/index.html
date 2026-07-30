@@ -633,7 +633,11 @@
         first (#1 = the single best improvement available in your squad right now) by estimated
         points gained over your lookahead window — projected from recent form (or FPL's own
         expected points as a fallback) scaled by each upcoming fixture's difficulty. Replacements
-        within each idea are also listed best-first.
+        within each idea are also listed best-first. Always shows at least 5 (whenever your squad
+        has that many valid options) so you can see the full picture — a
+        <strong style="color:var(--status-good)">green</strong> gain is worth making,
+        a <strong style="color:var(--status-critical)">red</strong> one would cost you points and
+        isn't recommended even with a free transfer to spend.
       </p>
       <p class="muted" style="font-size:0.82rem;margin:0 0 10px;">
         "Budget" is what you'd have to spend on a replacement if you sold that player alone: your
@@ -1639,7 +1643,7 @@
             ${s.outFlags.map(flagChip).join('')}${planTag}
             <span class="muted" style="float:right;" title="What you'd have to spend on a replacement if you sold this player alone: bank + their current price">Replacement budget: £${(s.budgetAvailable / 10).toFixed(1)}m</span>
           </div>
-          <div class="muted" style="font-size:0.82rem;margin-top:2px;">Estimated gain: <strong style="color:var(--status-good)">+${s.expectedPointsGain.toFixed(1)} pts</strong> over your lookahead window</div>
+          <div class="muted" style="font-size:0.82rem;margin-top:2px;">Estimated gain: <strong style="color:${s.expectedPointsGain >= 0 ? 'var(--status-good)' : 'var(--status-critical)'}">${s.expectedPointsGain >= 0 ? '+' : ''}${s.expectedPointsGain.toFixed(1)} pts</strong> over your lookahead window</div>
           <div style="margin-top:6px;">${candidatesHtml}</div>
         </div>
       `;
@@ -1966,6 +1970,10 @@
   // the best affordable candidate genuinely outscores the current player — mirrors
   // TransferPlannerService.ComputeCandidateSuggestions. Returns the full points-gain-ranked list
   // (not capped), shared by the displayed suggestions list and the transfer-plan builder below.
+  // Ranks every squad player's best affordable replacement by projected points gain, best first —
+  // including negative-gain entries (a player already better than anything affordable in their
+  // price bracket), so the displayed list can always show at least 5 ideas. Mirrors
+  // TransferPlannerService.ComputeCandidateSuggestions.
   function computeDemoCandidateSuggestions(picks, bankTenths, fixtureWeeks) {
     const squadIds = new Set(picks.map(p => p.playerId));
     const elementsById = new Map(state.bootstrap.elements.map(p => [p.id, p]));
@@ -1983,12 +1991,7 @@
         .slice(0, 3);
       if (!candidates.length) continue;
 
-      const scoreGain = scoreCandidate(candidates[0], difficultyByTeam) - scoreCandidate(currentPlayer, difficultyByTeam);
-      if (scoreGain <= 0) continue;
-
       const pointsGain = estimateProjectedPoints(candidates[0], rawDifficultyByTeam) - estimateProjectedPoints(currentPlayer, rawDifficultyByTeam);
-      if (pointsGain <= 0) continue;
-
       results.push({ pick, candidates, budgetAvailable, pointsGain });
     }
     results.sort((a, b) => b.pointsGain - a.pointsGain);
@@ -2036,6 +2039,8 @@
     };
 
     for (const candidate of ranked) {
+      if (candidate.pointsGain <= 0) continue; // never recommend a transfer projected to lose points
+
       const bestIn = candidate.candidates[0];
       const netCost = bestIn.now_cost - candidate.pick.nowCost;
       if (netCost > pool) continue;

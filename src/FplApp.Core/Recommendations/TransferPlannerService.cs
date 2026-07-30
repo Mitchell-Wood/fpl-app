@@ -19,10 +19,11 @@ public class TransferPlannerService
     private sealed record CandidateSuggestion(SquadPickAnalysis Pick, IReadOnlyList<Player> Candidates, int Budget, double PointsGain);
 
     /// <summary>
-    /// Considers every squad player (not just ones flagged for injury/form/fixtures) and scores a
-    /// same-position, affordable replacement for each wherever one genuinely outscores the current
-    /// player — so a strong squad's weakest links surface regardless of position. Ranked by
-    /// projected points gained over the fixture lookahead window, biggest first.
+    /// Considers every squad player (not just ones flagged for injury/form/fixtures) and finds the
+    /// best affordable same-position replacement for each — ranked by projected points gained over
+    /// the fixture lookahead window, biggest first. Includes negative-gain entries too (a squad
+    /// player who's already better than anything affordable in their price bracket); callers that
+    /// only want genuine upgrades should filter on <see cref="CandidateSuggestion.PointsGain"/> &gt; 0.
     /// </summary>
     private List<CandidateSuggestion> ComputeCandidateSuggestions(
         BootstrapStatic bootstrap,
@@ -34,7 +35,6 @@ public class TransferPlannerService
     {
         var playersById = bootstrap.Elements.ToDictionary(p => p.Id);
         var ownedPlayerIds = squad.Select(p => p.PlayerId).ToHashSet();
-        var difficultyByTeam = FixtureDifficultyCalculator.AverageUpcomingDifficultyByTeam(fixtures, fixtureLookaheadWeeks);
         var rawDifficultyByTeam = FixtureDifficultyCalculator.RawUpcomingDifficultiesByTeam(fixtures, fixtureLookaheadWeeks);
 
         var results = new List<CandidateSuggestion>();
@@ -55,24 +55,11 @@ public class TransferPlannerService
                 continue;
             }
 
-            // Score picks which candidate is the best overall fit (form, expected points, value,
-            // fixtures combined); only worth suggesting at all if that candidate beats the current
-            // player, otherwise every player in the squad would show upgrade noise.
-            var scoreGain = PlayerRecommendationService.Score(candidates[0], difficultyByTeam)
-                - PlayerRecommendationService.Score(currentPlayer, difficultyByTeam);
-            if (scoreGain <= 0)
-            {
-                continue;
-            }
-
-            // Points gain is the user-facing "how good is this transfer" number and what ranks and
-            // filters suggestions, since it's directly comparable to the cost of a -4 hit.
+            // Points gain is the user-facing "how good is this transfer" number and what ranks
+            // suggestions — directly comparable to the cost of a -4 hit. Kept even when negative so
+            // the full picture (including transfers that would cost points) can be shown.
             var pointsGain = EstimateProjectedPoints(candidates[0], rawDifficultyByTeam)
                 - EstimateProjectedPoints(currentPlayer, rawDifficultyByTeam);
-            if (pointsGain <= 0)
-            {
-                continue;
-            }
 
             results.Add(new CandidateSuggestion(pick, candidates, budget, pointsGain));
         }
@@ -100,7 +87,14 @@ public class TransferPlannerService
             }).ToList(),
         };
 
-    /// <param name="maxSuggestions">Caps how many out-players are suggested, keeping the list to the biggest real upgrades.</param>
+    /// <summary>
+    /// Lists the best replacement idea for as many squad players as possible (up to
+    /// <paramref name="maxSuggestions"/>, at least 5 whenever the squad has that many valid options),
+    /// ranked biggest points gain first — including ones that would lose points, so a manager can
+    /// see the full picture of what's and isn't worth doing rather than an empty list when nothing
+    /// currently looks like a genuine upgrade.
+    /// </summary>
+    /// <param name="maxSuggestions">Caps how many out-players are suggested.</param>
     public IReadOnlyList<TransferSuggestion> SuggestTransfers(
         BootstrapStatic bootstrap,
         IReadOnlyList<Fixture> fixtures,
@@ -148,6 +142,11 @@ public class TransferPlannerService
 
         foreach (var candidate in ranked)
         {
+            if (candidate.PointsGain <= 0)
+            {
+                continue; // never recommend a transfer projected to lose points, even a free one
+            }
+
             var bestIn = candidate.Candidates[0];
             var netCost = bestIn.NowCost - candidate.Pick.NowCost; // negative when the swap frees up money
 
