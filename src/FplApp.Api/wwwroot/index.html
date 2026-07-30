@@ -809,6 +809,7 @@
     bootstrap: null,
     fixtures: null,
     teamsById: new Map(),
+    teamIdByShortName: new Map(),
     positionsById: new Map(),
     playerSort: { key: 'total_points', dir: 'desc' },
     teamSort: { key: 'position', dir: 'asc' },
@@ -948,6 +949,7 @@
       state.bootstrap = bootstrap;
       state.fixtures = fixtures;
       state.teamsById = new Map(bootstrap.teams.map(t => [t.id, t]));
+      state.teamIdByShortName = new Map(bootstrap.teams.map(t => [t.short_name, t.id]));
       state.positionsById = new Map(bootstrap.element_types.map(p => [p.id, p]));
       statusEl.style.display = 'none';
       initPositionFilter();
@@ -1615,13 +1617,15 @@
     }
     const freeIds = new Set((plan?.recommendedTransfers ?? []).map(s => s.outPlayerId));
     const hitId = plan?.hitCandidate?.outPlayerId ?? null;
+    const difficultyByTeam = avgUpcomingDifficultyByTeam(getTransferFixtureWeeks());
+    const fixtureChipFor = teamShortName => avgDifficultyChip(difficultyByTeam.get(state.teamIdByShortName.get(teamShortName)) ?? null);
 
     const heading = `<div class="muted" style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.045em;margin-bottom:4px;">One-transfer ideas, biggest upgrade first</div>`;
     const rows = suggestions.map((s, i) => {
       const candidatesHtml = s.candidates.length
         ? s.candidates.map((c, ci) => `
             <div style="display:flex;justify-content:space-between;padding:4px 0;">
-              <span>${escapeHtml(c.webName)} <span class="muted">(${escapeHtml(c.teamName)})</span>${ci === 0 ? ' <span class="captain-badge">Best fit</span>' : ''}</span>
+              <span>${escapeHtml(c.webName)} <span class="muted">(${escapeHtml(c.teamName)})</span> ${fixtureChipFor(c.teamName)}${ci === 0 ? ' <span class="captain-badge">Best fit</span>' : ''}</span>
               <span class="num">£${(c.nowCost / 10).toFixed(1)}m &middot; Form ${c.form.toFixed(1)} &middot; ${c.totalPoints} pts</span>
             </div>
           `).join('')
@@ -1639,7 +1643,7 @@
       return `
         <div style="padding:10px 0;border-bottom:1px solid var(--gridline);">
           <div>
-            <strong>${i + 1}. ${escapeHtml(s.outWebName)}</strong> <span class="muted">(${escapeHtml(s.outTeamName)})</span>
+            <strong>${i + 1}. ${escapeHtml(s.outWebName)}</strong> <span class="muted">(${escapeHtml(s.outTeamName)})</span> ${fixtureChipFor(s.outTeamName)}
             ${s.outFlags.map(flagChip).join('')}${planTag}
             <span class="muted" style="float:right;" title="What you'd have to spend on a replacement if you sold this player alone: bank + their current price">Replacement budget: £${(s.budgetAvailable / 10).toFixed(1)}m</span>
           </div>
@@ -1651,9 +1655,10 @@
     container.innerHTML = heading + rows;
   }
 
-  function fundedUpgradeLegHtml(leg) {
+  function fundedUpgradeLegHtml(leg, difficultyByTeam) {
+    const inChip = avgDifficultyChip(difficultyByTeam.get(state.teamIdByShortName.get(leg.inTeamName)) ?? null);
     return `<strong>${escapeHtml(leg.outWebName)}</strong> <span class="muted">(${escapeHtml(leg.outTeamName)})</span>`
-      + ` &rarr; <strong>${escapeHtml(leg.inWebName)}</strong> <span class="muted">(${escapeHtml(leg.inTeamName)})</span>`;
+      + ` &rarr; <strong>${escapeHtml(leg.inWebName)}</strong> <span class="muted">(${escapeHtml(leg.inTeamName)})</span> ${inChip}`;
   }
 
   function renderFundedUpgrade(fundedUpgrade) {
@@ -1664,6 +1669,7 @@
       return;
     }
     const { downgrade: d, upgrade: u, moneySaved, netExpectedPointsGain } = fundedUpgrade;
+    const difficultyByTeam = avgUpcomingDifficultyByTeam(getTransferFixtureWeeks());
     const pointsNote = typeof netExpectedPointsGain === 'number'
       ? ` Combined, this is projected at <strong style="color:var(--status-good)">+${netExpectedPointsGain.toFixed(1)} pts</strong> over your lookahead window.`
       : '';
@@ -1674,11 +1680,11 @@
           Unlike the single swaps below, this uses two transfers together — do both, not just one.
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;flex-wrap:wrap;gap:4px;">
-          <span>Downgrade: ${fundedUpgradeLegHtml(d)}</span>
+          <span>Downgrade: ${fundedUpgradeLegHtml(d, difficultyByTeam)}</span>
           <span class="num">£${(d.outNowCost / 10).toFixed(1)}m &rarr; £${(d.inNowCost / 10).toFixed(1)}m</span>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;flex-wrap:wrap;gap:4px;">
-          <span>Upgrade: ${fundedUpgradeLegHtml(u)}</span>
+          <span>Upgrade: ${fundedUpgradeLegHtml(u, difficultyByTeam)}</span>
           <span class="num">£${(u.outNowCost / 10).toFixed(1)}m &rarr; £${(u.inNowCost / 10).toFixed(1)}m</span>
         </div>
         <div class="muted" style="margin-top:8px;font-size:0.82rem;">
