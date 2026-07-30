@@ -435,9 +435,11 @@
             <th>Kickoff</th>
             <th>Home</th>
             <th>Difficulty</th>
+            <th title="Estimated clean sheet chance, derived from goals scored/conceded this season">Home CS%</th>
             <th></th>
             <th>Away</th>
             <th>Difficulty</th>
+            <th title="Estimated clean sheet chance, derived from goals scored/conceded this season">Away CS%</th>
             <th>Score</th>
           </tr>
         </thead>
@@ -478,6 +480,7 @@
             <th class="num">Selected</th>
             <th class="num">xG</th>
             <th class="num">xA</th>
+            <th class="num" title="Estimated clean sheet chance, derived from goals scored/conceded this season">Est. CS%</th>
             <th>Upcoming fixtures</th>
           </tr>
         </thead>
@@ -695,6 +698,73 @@
     return `<span class="diff-chip ${difficultyClass(n)}" title="Difficulty ${n}/5">${label} (${n})</span>`;
   }
 
+  // ---- Estimated clean sheet chance ----
+  // FPL doesn't publish an "expected clean sheets" stat. This derives one from real results:
+  // each team's actual goals-scored/conceded rate this season, combined via a standard
+  // attack-strength-vs-defence-weakness model and converted to a probability with the Poisson
+  // distribution. It's a genuine estimate, not an official figure, and returns null (shown as "—")
+  // until at least one fixture has been played this season.
+
+  function computeTeamGoalRecords() {
+    const records = new Map(); // teamId -> { for, against, games }
+    const add = (teamId, goalsFor, goalsAgainst) => {
+      const r = records.get(teamId) || { for: 0, against: 0, games: 0 };
+      r.for += goalsFor;
+      r.against += goalsAgainst;
+      r.games += 1;
+      records.set(teamId, r);
+    };
+    for (const f of state.fixtures) {
+      if (!f.finished || f.team_h_score == null || f.team_a_score == null) continue;
+      add(f.team_h, f.team_h_score, f.team_a_score);
+      add(f.team_a, f.team_a_score, f.team_h_score);
+    }
+    return records;
+  }
+
+  function estimateCleanSheetChance(records, teamId, opponentId) {
+    const team = records.get(teamId);
+    const opponent = records.get(opponentId);
+    if (!team || team.games === 0 || !opponent || opponent.games === 0) return null;
+
+    let totalGames = 0, totalGoals = 0;
+    for (const r of records.values()) { totalGames += r.games; totalGoals += r.for; }
+    if (totalGames === 0) return null;
+    const leagueAvgGoalsPerGame = totalGoals / totalGames;
+    if (leagueAvgGoalsPerGame <= 0) return null;
+
+    const teamDefenceRate = team.against / team.games;
+    const opponentAttackRate = opponent.for / opponent.games;
+    const expectedGoalsConceded = teamDefenceRate * (opponentAttackRate / leagueAvgGoalsPerGame);
+    return Math.exp(-expectedGoalsConceded);
+  }
+
+  function csChip(chance) {
+    if (chance == null) return '<span class="muted">—</span>';
+    return `<span title="Estimated from goals scored/conceded so far this season">${(chance * 100).toFixed(0)}%</span>`;
+  }
+
+  function avgUpcomingCleanSheetChanceByTeam(weeks) {
+    const records = computeTeamGoalRecords();
+    const events = state.bootstrap.events;
+    const startEvent = events.find(e => !e.finished) || events[0];
+    const byTeam = new Map();
+    if (!startEvent) return byTeam;
+    const gwIds = new Set(Array.from({ length: weeks }, (_, i) => startEvent.id + i));
+
+    for (const f of state.fixtures) {
+      if (!gwIds.has(f.event)) continue;
+      const homeChance = estimateCleanSheetChance(records, f.team_h, f.team_a);
+      const awayChance = estimateCleanSheetChance(records, f.team_a, f.team_h);
+      if (homeChance != null) { if (!byTeam.has(f.team_h)) byTeam.set(f.team_h, []); byTeam.get(f.team_h).push(homeChance); }
+      if (awayChance != null) { if (!byTeam.has(f.team_a)) byTeam.set(f.team_a, []); byTeam.get(f.team_a).push(awayChance); }
+    }
+    for (const [teamId, list] of byTeam) {
+      byTeam.set(teamId, list.reduce((sum, v) => sum + v, 0) / list.length);
+    }
+    return byTeam;
+  }
+
   async function loadData() {
     const statusEl = document.getElementById('status');
     try {
@@ -867,6 +937,7 @@
     rows.sort((a, b) => new Date(a.kickoff_time || 0) - new Date(b.kickoff_time || 0));
 
     const tbody = document.querySelector('#fixtures-table tbody');
+    const goalRecords = computeTeamGoalRecords();
     tbody.innerHTML = rows.map(f => {
       const kickoff = f.kickoff_time
         ? new Date(f.kickoff_time).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
@@ -874,18 +945,22 @@
       const score = f.finished || f.started
         ? `${f.team_h_score ?? '-'} – ${f.team_a_score ?? '-'}`
         : '—';
+      const homeCs = estimateCleanSheetChance(goalRecords, f.team_h, f.team_a);
+      const awayCs = estimateCleanSheetChance(goalRecords, f.team_a, f.team_h);
       return `
         <tr>
           <td>${kickoff}</td>
           <td>${escapeHtml(teamName(f.team_h))}</td>
           <td>${diffChip(f.team_h_difficulty)}</td>
+          <td class="num">${csChip(homeCs)}</td>
           <td class="muted">vs</td>
           <td>${escapeHtml(teamName(f.team_a))}</td>
           <td>${diffChip(f.team_a_difficulty)}</td>
+          <td class="num">${csChip(awayCs)}</td>
           <td class="num">${score}</td>
         </tr>
       `;
-    }).join('') || `<tr><td colspan="7" class="muted">No fixtures this gameweek.</td></tr>`;
+    }).join('') || `<tr><td colspan="9" class="muted">No fixtures this gameweek.</td></tr>`;
   }
 
   // ---- Fixture difficulty ticker ----
@@ -1035,7 +1110,7 @@
     const count = Math.min(50, Math.max(1, parseInt(document.getElementById('rec-count').value, 10) || 10));
     const fixtureWeeks = Math.min(20, Math.max(1, parseInt(document.getElementById('rec-fixture-weeks').value, 10) || 5));
     const tbody = document.querySelector('#recommendations-table tbody');
-    tbody.innerHTML = `<tr><td colspan="11" class="muted">Loading&hellip;</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="12" class="muted">Loading&hellip;</td></tr>`;
     try {
       const params = new URLSearchParams({ count, fixtureWeeks });
       if (posFilter) params.set('elementType', posFilter);
@@ -1043,6 +1118,7 @@
       if (!res.ok) throw new Error('player-recommendations ' + res.status);
       const players = await res.json();
       const difficultyByTeam = avgUpcomingDifficultyByTeam(fixtureWeeks);
+      const cleanSheetByTeam = avgUpcomingCleanSheetChanceByTeam(fixtureWeeks);
       tbody.innerHTML = players.map((p, i) => `
         <tr>
           <td class="num">${i + 1}</td>
@@ -1055,11 +1131,12 @@
           <td class="num">${(parseFloat(p.selected_by_percent) || 0).toFixed(1)}%</td>
           <td class="num">${(parseFloat(p.expected_goals) || 0).toFixed(1)}</td>
           <td class="num">${(parseFloat(p.expected_assists) || 0).toFixed(1)}</td>
+          <td class="num">${csChip(cleanSheetByTeam.get(p.team) ?? null)}</td>
           <td>${avgDifficultyChip(difficultyByTeam.get(p.team) ?? null)}</td>
         </tr>
-      `).join('') || `<tr><td colspan="11" class="muted">No players match.</td></tr>`;
+      `).join('') || `<tr><td colspan="12" class="muted">No players match.</td></tr>`;
     } catch (err) {
-      tbody.innerHTML = `<tr><td colspan="11" class="muted">Could not load recommendations: ${escapeHtml(err.message)}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="12" class="muted">Could not load recommendations: ${escapeHtml(err.message)}</td></tr>`;
     }
   }
 
