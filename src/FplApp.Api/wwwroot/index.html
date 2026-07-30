@@ -7,96 +7,138 @@
 <style>
   :root {
     color-scheme: light;
-    --surface-1:      #fcfcfb;
-    --page-plane:     #f9f9f7;
-    --text-primary:   #0b0b0b;
-    --text-secondary: #52514e;
-    --text-muted:     #898781;
-    --gridline:       #e1e0d9;
-    --baseline:       #c3c2b7;
-    --border:         rgba(11,11,11,0.10);
-    --series-1:       #2a78d6;
-    --status-good:      #0ca30c;
-    --status-warning:   #fab219;
-    --status-serious:   #ec835a;
-    --status-critical:  #d03b3b;
-    --row-hover: rgba(11,11,11,0.035);
+    --brand-1:        #2b0030;
+    --brand-2:        #4a0a52;
+    --brand-accent:   #00e08c;
+    --surface-1:      #ffffff;
+    --surface-raised: #ffffff;
+    --page-plane:     #f6f5fa;
+    --text-primary:   #17121f;
+    --text-secondary: #5c5670;
+    --text-muted:     #918c9e;
+    --gridline:       #e7e4f0;
+    --baseline:       #d3cee0;
+    --border:         rgba(23,18,31,0.12);
+    --series-1:       #7c3aed;
+    --status-good:      #16a34a;
+    --status-warning:   #f59e0b;
+    --status-serious:   #f97316;
+    --status-critical:  #dc2626;
+    --row-hover: rgba(124,58,237,0.05);
+    --shadow-sm: 0 1px 2px rgba(23,18,31,0.05);
+    --shadow-md: 0 4px 16px rgba(23,18,31,0.06);
   }
   @media (prefers-color-scheme: dark) {
     :root:where(:not([data-theme="light"])) {
       color-scheme: dark;
-      --surface-1:      #1a1a19;
-      --page-plane:     #0d0d0d;
-      --text-primary:   #ffffff;
-      --text-secondary: #c3c2b7;
-      --text-muted:     #898781;
-      --gridline:       #2c2c2a;
-      --baseline:       #383835;
+      --surface-1:      #1b1723;
+      --surface-raised: #221d2c;
+      --page-plane:     #120f18;
+      --text-primary:   #f6f4fa;
+      --text-secondary: #bcb5cc;
+      --text-muted:     #8b8499;
+      --gridline:       #2e2838;
+      --baseline:       #3c3448;
       --border:         rgba(255,255,255,0.10);
-      --series-1:       #3987e5;
-      --status-good:      #0ca30c;
-      --status-warning:   #fab219;
-      --status-serious:   #ec835a;
-      --status-critical:  #d03b3b;
-      --row-hover: rgba(255,255,255,0.05);
+      --series-1:       #a78bfa;
+      --status-good:      #34d399;
+      --status-warning:   #fbbf24;
+      --status-serious:   #fb923c;
+      --status-critical:  #f87171;
+      --row-hover: rgba(167,139,250,0.09);
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+      --shadow-md: 0 4px 16px rgba(0,0,0,0.35);
     }
   }
   :root[data-theme="dark"] {
     color-scheme: dark;
-    --surface-1:      #1a1a19;
-    --page-plane:     #0d0d0d;
-    --text-primary:   #ffffff;
-    --text-secondary: #c3c2b7;
-    --text-muted:     #898781;
-    --gridline:       #2c2c2a;
-    --baseline:       #383835;
+    --surface-1:      #1b1723;
+    --surface-raised: #221d2c;
+    --page-plane:     #120f18;
+    --text-primary:   #f6f4fa;
+    --text-secondary: #bcb5cc;
+    --text-muted:     #8b8499;
+    --gridline:       #2e2838;
+    --baseline:       #3c3448;
     --border:         rgba(255,255,255,0.10);
-    --series-1:       #3987e5;
-    --row-hover: rgba(255,255,255,0.05);
+    --series-1:       #a78bfa;
+    --status-good:      #34d399;
+    --status-warning:   #fbbf24;
+    --status-serious:   #fb923c;
+    --status-critical:  #f87171;
+    --row-hover: rgba(167,139,250,0.09);
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+    --shadow-md: 0 4px 16px rgba(0,0,0,0.35);
   }
 
   * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
   body {
     margin: 0;
-    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
     background: var(--page-plane);
     color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "cv11", "ss01", "tnum";
   }
   header {
-    padding: 20px clamp(16px, 4vw, 40px) 0;
+    background: linear-gradient(135deg, var(--brand-1) 0%, var(--brand-2) 100%);
+    box-shadow: var(--shadow-md);
+  }
+  .header-inner {
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: 22px clamp(16px, 4vw, 40px) 0;
   }
   h1 {
     margin: 0 0 4px;
-    font-size: 1.5rem;
+    font-size: 1.375rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: #ffffff;
   }
   .subtitle {
     color: var(--text-secondary);
     margin: 0 0 16px;
-    font-size: 0.9rem;
+    font-size: 0.875rem;
   }
+  header .subtitle { color: rgba(255,255,255,0.66); }
   nav.tabs {
     display: flex;
-    gap: 4px;
-    border-bottom: 1px solid var(--gridline);
+    flex-wrap: wrap;
+    gap: 2px;
+    border-bottom: 1px solid rgba(255,255,255,0.14);
+    margin-top: 6px;
   }
   nav.tabs button {
     appearance: none;
     background: none;
     border: none;
     border-bottom: 2px solid transparent;
-    color: var(--text-secondary);
+    border-radius: 8px 8px 0 0;
+    color: rgba(255,255,255,0.68);
     font: inherit;
+    font-size: 0.875rem;
     font-weight: 600;
-    padding: 10px 14px;
+    padding: 10px 16px;
     cursor: pointer;
+    transition: background-color 0.12s ease, color 0.12s ease;
+  }
+  nav.tabs button:hover {
+    color: #ffffff;
+    background: rgba(255,255,255,0.06);
   }
   nav.tabs button.active {
-    color: var(--text-primary);
-    border-bottom-color: var(--series-1);
+    color: #ffffff;
+    background: rgba(255,255,255,0.10);
+    border-bottom-color: var(--brand-accent);
   }
   main {
-    padding: 20px clamp(16px, 4vw, 40px) 40px;
-    max-width: 1200px;
+    padding: 24px clamp(16px, 4vw, 40px) 48px;
+    max-width: 1320px;
     margin: 0 auto;
   }
   section.panel {
@@ -108,49 +150,65 @@
   .controls {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: 10px;
-    margin-bottom: 14px;
+    margin-bottom: 16px;
   }
   .controls input, .controls select {
     font: inherit;
-    padding: 7px 10px;
+    font-size: 0.875rem;
+    height: 36px;
+    padding: 0 10px;
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: 8px;
     background: var(--surface-1);
     color: var(--text-primary);
+  }
+  .controls input:focus, .controls select:focus,
+  .controls button:focus-visible {
+    outline: none;
+    border-color: var(--series-1);
+    box-shadow: 0 0 0 3px rgba(124,58,237,0.18);
   }
   .controls input { min-width: 200px; }
   .controls button {
     font: inherit;
+    font-size: 0.875rem;
     font-weight: 600;
-    padding: 7px 14px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
+    height: 36px;
+    padding: 0 16px;
+    border: none;
+    border-radius: 8px;
     background: var(--series-1);
     color: #ffffff;
     cursor: pointer;
+    transition: opacity 0.12s ease;
   }
-  .controls button:hover { opacity: 0.9; }
+  .controls button:hover { opacity: 0.88; }
   .table-wrap {
     overflow-x: auto;
     border: 1px solid var(--gridline);
-    border-radius: 10px;
+    border-radius: 12px;
     background: var(--surface-1);
+    box-shadow: var(--shadow-sm);
   }
   table {
     border-collapse: collapse;
     width: 100%;
-    font-size: 0.9rem;
+    font-size: 0.875rem;
     white-space: nowrap;
   }
   thead th {
     position: sticky;
     top: 0;
-    background: var(--surface-1);
+    background: var(--surface-raised);
     text-align: left;
-    padding: 10px 12px;
-    color: var(--text-secondary);
-    font-weight: 600;
+    padding: 11px 12px;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.045em;
     border-bottom: 1px solid var(--gridline);
     cursor: pointer;
     user-select: none;
@@ -158,7 +216,7 @@
   thead th.sortable:hover { color: var(--text-primary); }
   thead th .arrow { color: var(--series-1); margin-left: 4px; }
   tbody td {
-    padding: 8px 12px;
+    padding: 9px 12px;
     border-bottom: 1px solid var(--gridline);
     font-variant-numeric: tabular-nums;
   }
@@ -168,10 +226,10 @@
   .muted { color: var(--text-muted); }
   .pos-chip {
     display: inline-block;
-    font-size: 0.75rem;
-    font-weight: 600;
-    padding: 2px 6px;
-    border-radius: 4px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 5px;
     background: var(--gridline);
     color: var(--text-secondary);
   }
@@ -179,7 +237,7 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    font-size: 0.78rem;
+    font-size: 0.76rem;
     font-weight: 600;
     padding: 3px 8px;
     border-radius: 999px;
@@ -191,7 +249,7 @@
   .diff-serious { background: var(--status-serious); }
   .diff-critical { background: var(--status-critical); }
   .diff-chip.mini {
-    font-size: 0.72rem;
+    font-size: 0.7rem;
     padding: 2px 7px;
   }
   .diff-blank {
@@ -202,18 +260,20 @@
     background: var(--series-1);
   }
   .section-heading {
-    font-size: 1rem;
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: -0.005em;
     margin: 0 0 12px;
   }
   .section-heading:not(:first-child) {
-    margin-top: 32px;
+    margin-top: 34px;
   }
   .inline-label {
     display: flex;
     align-items: center;
     gap: 8px;
     color: var(--text-secondary);
-    font-size: 0.9rem;
+    font-size: 0.875rem;
   }
   .inline-label input {
     width: 64px;
@@ -232,8 +292,9 @@
   .status-msg.error { color: var(--status-critical); }
   .lineup-card {
     border: 1px solid var(--gridline);
-    border-radius: 10px;
+    border-radius: 12px;
     background: var(--surface-1);
+    box-shadow: var(--shadow-sm);
     padding: 16px;
     margin-bottom: 16px;
   }
@@ -245,7 +306,7 @@
   }
   .lineup-status {
     display: inline-block;
-    font-size: 0.78rem;
+    font-size: 0.76rem;
     font-weight: 600;
     padding: 3px 8px;
     border-radius: 999px;
@@ -262,12 +323,14 @@
   .lineup-team h3 {
     margin: 0 0 10px;
     font-size: 1rem;
+    font-weight: 700;
   }
   .lineup-position-group { margin-bottom: 8px; }
   .lineup-position-label {
-    font-size: 0.72rem;
-    font-weight: 600;
+    font-size: 0.7rem;
+    font-weight: 700;
     text-transform: uppercase;
+    letter-spacing: 0.04em;
     color: var(--text-muted);
     margin-bottom: 2px;
   }
@@ -275,7 +338,7 @@
     list-style: none;
     margin: 0;
     padding: 0;
-    font-size: 0.88rem;
+    font-size: 0.875rem;
   }
   .lineup-player-list li { padding: 2px 0; }
   .lineup-subs, .lineup-unavailable {
@@ -288,7 +351,7 @@
   }
   .captain-badge {
     display: inline-block;
-    font-size: 0.7rem;
+    font-size: 0.68rem;
     font-weight: 700;
     padding: 1px 5px;
     border-radius: 4px;
@@ -297,7 +360,7 @@
   }
   .bench-badge {
     display: inline-block;
-    font-size: 0.7rem;
+    font-size: 0.68rem;
     font-weight: 600;
     padding: 1px 5px;
     border-radius: 4px;
@@ -306,7 +369,7 @@
   }
   .flag-chip {
     display: inline-block;
-    font-size: 0.75rem;
+    font-size: 0.74rem;
     font-weight: 600;
     padding: 2px 7px;
     border-radius: 999px;
@@ -318,30 +381,37 @@
     text-align: center;
     color: var(--text-muted);
     font-size: 0.8rem;
-    padding: 0 0 30px;
+    padding: 8px 0 32px;
+  }
+  @media (max-width: 560px) {
+    body { font-size: 14px; }
+    nav.tabs button { padding: 9px 12px; font-size: 0.82rem; }
+    .header-inner { padding-top: 18px; }
   }
 </style>
 </head>
 <body>
 <header>
-  <h1>FPL App</h1>
-  <p class="subtitle">Live-ish data from the Fantasy Premier League API</p>
-  <nav class="tabs">
-    <button data-panel="players" class="active">Players</button>
-    <button data-panel="teams">Teams</button>
-    <button data-panel="fixtures">Fixtures</button>
-    <button data-panel="recommendations">Recommendations</button>
-    <button data-panel="my-team">My Team</button>
-    <button data-panel="mini-leagues">Mini-Leagues</button>
-    <button data-panel="price-watch">Price Watch</button>
-    <button data-panel="set-pieces">Set Pieces</button>
-    <button data-panel="lineups">Predicted Lineups</button>
-  </nav>
+  <div class="header-inner">
+    <h1>FPL App</h1>
+    <p class="subtitle">Live-ish data from the Fantasy Premier League API</p>
+    <nav class="tabs">
+      <button data-panel="my-team" class="active">My Team</button>
+      <button data-panel="lineups">Predicted Lineups</button>
+      <button data-panel="recommendations">Recommendations</button>
+      <button data-panel="fixtures">Fixtures</button>
+      <button data-panel="players">Players</button>
+      <button data-panel="price-watch">Price Watch</button>
+      <button data-panel="mini-leagues">Mini-Leagues</button>
+      <button data-panel="set-pieces">Set Pieces</button>
+      <button data-panel="teams">Teams</button>
+    </nav>
+  </div>
 </header>
 <main>
   <div id="status" class="status-msg">Loading FPL data&hellip;</div>
 
-  <section id="players" class="panel active">
+  <section id="players" class="panel">
     <div class="controls">
       <input id="player-search" type="search" placeholder="Search players&hellip;">
       <select id="player-position">
@@ -489,7 +559,7 @@
     </div>
   </section>
 
-  <section id="my-team" class="panel">
+  <section id="my-team" class="panel active">
     <h2 class="section-heading">My Team</h2>
     <p class="subtitle" style="margin-top:-8px">
       Enter your FPL team ID to see your squad with flags for injuries, poor form, and tough upcoming
@@ -828,6 +898,7 @@
       renderRecommendations();
       renderPriceWatch();
       renderSetPieces();
+      activatePanelExtras(document.querySelector('nav.tabs button.active')?.dataset.panel);
     } catch (err) {
       statusEl.textContent = 'Could not load FPL data: ' + err.message;
       statusEl.classList.add('error');
@@ -1798,6 +1869,21 @@
     });
   }
 
+  function activatePanelExtras(panel) {
+    if (panel === 'lineups' && !state.lineupsLoaded) {
+      state.lineupsLoaded = true;
+      renderLineups();
+    }
+    if (panel === 'my-team' && !state.myTeamLoaded && document.getElementById('my-team-id').value.trim()) {
+      state.myTeamLoaded = true;
+      loadMyTeam();
+    }
+    if (panel === 'mini-leagues' && !state.miniLeaguesLoaded && document.getElementById('ml-team-id').value.trim()) {
+      state.miniLeaguesLoaded = true;
+      loadMyLeagues();
+    }
+  }
+
   function wireTabs() {
     document.querySelectorAll('nav.tabs button').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -1805,18 +1891,7 @@
         document.querySelectorAll('section.panel').forEach(p => p.classList.remove('active'));
         btn.classList.add('active');
         document.getElementById(btn.dataset.panel).classList.add('active');
-        if (btn.dataset.panel === 'lineups' && !state.lineupsLoaded) {
-          state.lineupsLoaded = true;
-          renderLineups();
-        }
-        if (btn.dataset.panel === 'my-team' && !state.myTeamLoaded && document.getElementById('my-team-id').value.trim()) {
-          state.myTeamLoaded = true;
-          loadMyTeam();
-        }
-        if (btn.dataset.panel === 'mini-leagues' && !state.miniLeaguesLoaded && document.getElementById('ml-team-id').value.trim()) {
-          state.miniLeaguesLoaded = true;
-          loadMyLeagues();
-        }
+        activatePanelExtras(btn.dataset.panel);
       });
     });
   }
