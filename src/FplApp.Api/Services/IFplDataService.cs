@@ -19,4 +19,10 @@ public interface IFplDataService
     /// early (so rivals can't scout your team before you're locked in).
     /// </summary>
     Task<TeamPicks?> GetPicksAsync(int teamId, int eventId, CancellationToken cancellationToken = default);
+
+    /// <summary>Gets a classic league's standings page, or null if the league id doesn't exist.</summary>
+    Task<LeagueStandingsResponse?> GetLeagueStandingsAsync(int leagueId, int page, CancellationToken cancellationToken = default);
+
+    /// <summary>Gets a manager's season-to-date gameweek history and chips played (always public).</summary>
+    Task<TeamHistoryResponse?> GetHistoryAsync(int teamId, CancellationToken cancellationToken = default);
 }

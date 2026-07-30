@@ -332,6 +332,7 @@
     <button data-panel="fixtures">Fixtures</button>
     <button data-panel="recommendations">Recommendations</button>
     <button data-panel="my-team">My Team</button>
+    <button data-panel="mini-leagues">Mini-Leagues</button>
     <button data-panel="price-watch">Price Watch</button>
     <button data-panel="set-pieces">Set Pieces</button>
     <button data-panel="lineups">Predicted Lineups</button>
@@ -534,6 +535,42 @@
     </div>
   </section>
 
+  <section id="mini-leagues" class="panel">
+    <h2 class="section-heading">Mini-Leagues</h2>
+    <p class="subtitle" style="margin-top:-8px">
+      Enter your FPL team ID to see the leagues you're in. Pick a league to view standings, then
+      click a manager to see their transfer history, hits taken, chips used, and an estimated free
+      transfer count (past-gameweek data is always public; the current gameweek's picks aren't
+      until its deadline passes).
+    </p>
+    <div class="controls">
+      <input id="ml-team-id" type="text" inputmode="numeric" placeholder="Team ID, e.g. 1234567" style="min-width:180px">
+      <button id="ml-load-leagues" type="button">Load leagues</button>
+      <select id="ml-league-select" style="display:none"></select>
+    </div>
+    <div id="ml-status" class="status-msg" style="display:none"></div>
+    <div class="table-wrap" id="ml-standings-wrap" style="display:none">
+      <table id="ml-standings-table">
+        <thead>
+          <tr>
+            <th class="num">Rank</th>
+            <th>Team</th>
+            <th>Manager</th>
+            <th class="num">GW Points</th>
+            <th class="num">Total Points</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="controls" id="ml-load-more-wrap" style="display:none">
+      <button id="ml-load-more" type="button">Load more</button>
+    </div>
+    <div id="ml-detail-panel" class="table-wrap" style="display:none;padding:16px;margin-top:16px;">
+      <div id="ml-detail-content"></div>
+    </div>
+  </section>
+
   <section id="price-watch" class="panel">
     <h2 class="section-heading">Price watch</h2>
     <p class="subtitle" style="margin-top:-8px">
@@ -635,6 +672,8 @@
     tickerSort: { key: 'avg', dir: 'asc' },
     lineupsLoaded: false,
     myTeamLoaded: false,
+    miniLeaguesLoaded: false,
+    miniLeague: { leagueId: null, page: 1 },
   };
 
   const DIFFICULTY_LABELS = { 1: 'Very easy', 2: 'Easy', 3: 'Medium', 4: 'Hard', 5: 'Very hard' };
@@ -668,6 +707,7 @@
       initLineupGameweekFilter();
       initRecPositionFilter();
       initMyTeamGameweekFilter();
+      initMiniLeaguesTab();
       renderPlayers();
       renderTeams();
       renderFixtures();
@@ -1358,6 +1398,158 @@
     }
   }
 
+  // ---- Mini-Leagues ----
+
+  const CHIP_DISPLAY_NAMES = { wildcard: 'Wildcard', freehit: 'Free Hit', bboost: 'Bench Boost', '3xc': 'Triple Captain' };
+
+  function initMiniLeaguesTab() {
+    const savedId = localStorage.getItem(MY_TEAM_ID_STORAGE_KEY);
+    if (savedId) document.getElementById('ml-team-id').value = savedId;
+  }
+
+  function mlSetStatus(message, isError) {
+    const statusEl = document.getElementById('ml-status');
+    if (!message) {
+      statusEl.style.display = 'none';
+      return;
+    }
+    statusEl.textContent = message;
+    statusEl.classList.toggle('error', !!isError);
+    statusEl.style.display = '';
+  }
+
+  async function loadMyLeagues() {
+    const teamIdInput = document.getElementById('ml-team-id');
+    const teamId = teamIdInput.value.trim();
+    const leagueSelect = document.getElementById('ml-league-select');
+    const standingsWrap = document.getElementById('ml-standings-wrap');
+    const loadMoreWrap = document.getElementById('ml-load-more-wrap');
+    const detailPanel = document.getElementById('ml-detail-panel');
+
+    mlSetStatus('');
+    leagueSelect.style.display = 'none';
+    standingsWrap.style.display = 'none';
+    loadMoreWrap.style.display = 'none';
+    detailPanel.style.display = 'none';
+
+    if (!teamId || !/^\d+$/.test(teamId)) {
+      mlSetStatus('Enter a numeric FPL team ID.');
+      return;
+    }
+    localStorage.setItem(MY_TEAM_ID_STORAGE_KEY, teamId);
+    mlSetStatus('Loading your leagues…');
+
+    try {
+      const res = await fetch(`/api/my-leagues?teamId=${encodeURIComponent(teamId)}`);
+      if (res.status === 404) {
+        mlSetStatus('No FPL team found with that ID. Double-check it from the FPL site URL.', true);
+        return;
+      }
+      if (!res.ok) throw new Error('my-leagues ' + res.status);
+      const data = await res.json();
+
+      if (!data.leagues.length) {
+        mlSetStatus(`${data.teamName} (${data.managerName}) isn't in any classic leagues.`);
+        return;
+      }
+
+      mlSetStatus('');
+      leagueSelect.innerHTML = data.leagues.map(l => `<option value="${l.id}">${escapeHtml(l.name)}</option>`).join('');
+      leagueSelect.style.display = '';
+      await loadLeagueStandings(parseInt(leagueSelect.value, 10), 1, false);
+    } catch (err) {
+      mlSetStatus('Could not load leagues: ' + err.message, true);
+    }
+  }
+
+  async function loadLeagueStandings(leagueId, page, append) {
+    const tbody = document.querySelector('#ml-standings-table tbody');
+    const standingsWrap = document.getElementById('ml-standings-wrap');
+    const loadMoreWrap = document.getElementById('ml-load-more-wrap');
+
+    state.miniLeague = { leagueId, page };
+    if (!append) tbody.innerHTML = `<tr><td colspan="5" class="muted">Loading&hellip;</td></tr>`;
+
+    try {
+      const res = await fetch(`/api/league-standings?leagueId=${leagueId}&page=${page}`);
+      if (!res.ok) throw new Error('league-standings ' + res.status);
+      const data = await res.json();
+
+      const rowsHtml = data.results.map(r => `
+        <tr style="cursor:pointer" data-entry="${r.entry}" data-team-name="${escapeHtml(r.entryName)}" data-manager-name="${escapeHtml(r.playerName)}">
+          <td class="num">${r.rank}</td>
+          <td>${escapeHtml(r.entryName)}</td>
+          <td>${escapeHtml(r.playerName)}</td>
+          <td class="num">${r.eventTotal}</td>
+          <td class="num">${r.total}</td>
+        </tr>
+      `).join('');
+
+      if (append) {
+        tbody.insertAdjacentHTML('beforeend', rowsHtml);
+      } else {
+        tbody.innerHTML = rowsHtml || `<tr><td colspan="5" class="muted">No standings yet for this league (usually empty until a gameweek has been scored).</td></tr>`;
+      }
+      standingsWrap.style.display = '';
+      loadMoreWrap.style.display = data.hasNext ? '' : 'none';
+
+      tbody.querySelectorAll('tr[data-entry]').forEach(tr => {
+        tr.addEventListener('click', () => loadManagerHistory(
+          parseInt(tr.dataset.entry, 10), tr.dataset.teamName, tr.dataset.managerName));
+      });
+    } catch (err) {
+      if (!append) tbody.innerHTML = `<tr><td colspan="5" class="muted">Could not load standings: ${escapeHtml(err.message)}</td></tr>`;
+    }
+  }
+
+  async function loadManagerHistory(teamId, teamName, managerName) {
+    const panel = document.getElementById('ml-detail-panel');
+    const content = document.getElementById('ml-detail-content');
+    panel.style.display = '';
+    content.innerHTML = `<p class="muted">Loading ${escapeHtml(teamName)}&hellip;</p>`;
+
+    try {
+      const res = await fetch(`/api/manager-history?teamId=${teamId}`);
+      if (!res.ok) throw new Error('manager-history ' + res.status);
+      const data = await res.json();
+
+      const chipsText = data.chips.length
+        ? data.chips.map(c => `${escapeHtml(CHIP_DISPLAY_NAMES[c.name] || c.name)} (GW${c.event})`).join(', ')
+        : '<span class="muted">None played yet</span>';
+
+      const gwRows = [...data.gameweeks].reverse().map(gw => `
+        <tr>
+          <td>GW${gw.event}</td>
+          <td class="num">${gw.points}</td>
+          <td class="num">${gw.eventTransfers}</td>
+          <td class="num">${gw.eventTransfersCost > 0 ? '−' + gw.eventTransfersCost : '—'}</td>
+          <td class="num">${gw.pointsOnBench}</td>
+        </tr>
+      `).join('');
+
+      content.innerHTML = `
+        <h3 class="section-heading" style="font-size:0.95rem;margin-top:0;">${escapeHtml(teamName)} <span class="muted">(${escapeHtml(managerName)})</span></h3>
+        <p>
+          <strong>Estimated free transfers:</strong> ${data.estimatedFreeTransfers}
+          <span class="muted" style="font-size:0.8rem;">(estimated from public history — not an official FPL figure)</span>
+        </p>
+        <p><strong>Chips used:</strong> ${chipsText}</p>
+        ${data.gameweeks.length ? `
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>GW</th><th class="num">Points</th><th class="num">Transfers</th><th class="num">Hit</th><th class="num">Bench pts</th></tr>
+              </thead>
+              <tbody>${gwRows}</tbody>
+            </table>
+          </div>
+        ` : '<p class="muted">No completed gameweeks yet this season.</p>'}
+      `;
+    } catch (err) {
+      content.innerHTML = `<p class="muted">Could not load history: ${escapeHtml(err.message)}</p>`;
+    }
+  }
+
   // ---- Predicted lineups ----
 
   function initLineupGameweekFilter() {
@@ -1489,6 +1681,10 @@
           state.myTeamLoaded = true;
           loadMyTeam();
         }
+        if (btn.dataset.panel === 'mini-leagues' && !state.miniLeaguesLoaded && document.getElementById('ml-team-id').value.trim()) {
+          state.miniLeaguesLoaded = true;
+          loadMyLeagues();
+        }
       });
     });
   }
@@ -1510,6 +1706,17 @@
   });
   document.getElementById('my-team-id').addEventListener('keydown', e => {
     if (e.key === 'Enter') loadMyTeam();
+  });
+  document.getElementById('ml-load-leagues').addEventListener('click', loadMyLeagues);
+  document.getElementById('ml-team-id').addEventListener('keydown', e => {
+    if (e.key === 'Enter') loadMyLeagues();
+  });
+  document.getElementById('ml-league-select').addEventListener('change', e => {
+    document.getElementById('ml-detail-panel').style.display = 'none';
+    loadLeagueStandings(parseInt(e.target.value, 10), 1, false);
+  });
+  document.getElementById('ml-load-more').addEventListener('click', () => {
+    loadLeagueStandings(state.miniLeague.leagueId, state.miniLeague.page + 1, true);
   });
   loadData();
 </script>

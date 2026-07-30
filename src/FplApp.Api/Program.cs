@@ -183,4 +183,71 @@ app.MapGet("/api/transfer-suggestions", async (int teamId, int eventId, int? fix
     })
     .WithName("GetTransferSuggestions");
 
+app.MapGet("/api/my-leagues", async (int teamId, IFplDataService fplDataService, CancellationToken cancellationToken) =>
+    {
+        var entry = await fplDataService.GetEntryAsync(teamId, cancellationToken);
+        if (entry is null)
+        {
+            return Results.NotFound(new { message = "No FPL team found with that ID." });
+        }
+
+        var managerName = $"{entry.PlayerFirstName} {entry.PlayerLastName}".Trim();
+        return Results.Ok(new
+        {
+            teamId,
+            teamName = entry.Name,
+            managerName,
+            leagues = entry.Leagues.Classic.Select(l => new { l.Id, l.Name }),
+        });
+    })
+    .WithName("GetMyLeagues");
+
+app.MapGet("/api/league-standings", async (int leagueId, int? page, IFplDataService fplDataService, CancellationToken cancellationToken) =>
+    {
+        var standings = await fplDataService.GetLeagueStandingsAsync(leagueId, page ?? 1, cancellationToken);
+        if (standings is null)
+        {
+            return Results.NotFound(new { message = "No league found with that ID." });
+        }
+
+        return Results.Ok(new
+        {
+            leagueId,
+            leagueName = standings.League.Name,
+            hasNext = standings.Standings.HasNext,
+            page = standings.Standings.Page,
+            results = standings.Standings.Results,
+        });
+    })
+    .WithName("GetLeagueStandings");
+
+app.MapGet("/api/manager-history", async (int teamId, IFplDataService fplDataService, CancellationToken cancellationToken) =>
+    {
+        var entry = await fplDataService.GetEntryAsync(teamId, cancellationToken);
+        if (entry is null)
+        {
+            return Results.NotFound(new { message = "No FPL team found with that ID." });
+        }
+
+        var history = await fplDataService.GetHistoryAsync(teamId, cancellationToken);
+        if (history is null)
+        {
+            return Results.NotFound(new { message = "No history found for that team ID." });
+        }
+
+        var managerName = $"{entry.PlayerFirstName} {entry.PlayerLastName}".Trim();
+        var estimatedFreeTransfers = FreeTransferEstimator.EstimateAvailable(history.Current, history.Chips);
+
+        return Results.Ok(new
+        {
+            teamId,
+            teamName = entry.Name,
+            managerName,
+            estimatedFreeTransfers,
+            gameweeks = history.Current,
+            chips = history.Chips,
+        });
+    })
+    .WithName("GetManagerHistory");
+
 app.Run();

@@ -31,4 +31,22 @@ public class TeamEntry
 
     [JsonPropertyName("last_deadline_value")]
     public int? LastDeadlineValue { get; set; }
+
+    [JsonPropertyName("leagues")]
+    public EntryLeagues Leagues { get; set; } = new();
+}
+
+public class EntryLeagues
+{
+    [JsonPropertyName("classic")]
+    public List<LeagueMembership> Classic { get; set; } = [];
+}
+
+public class LeagueMembership
+{
+    [JsonPropertyName("id")]
+    public int Id { get; set; }
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
 }

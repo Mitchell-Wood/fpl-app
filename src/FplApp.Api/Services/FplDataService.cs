@@ -65,4 +65,28 @@ public class FplDataService : IFplDataService
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<TeamPicks>(cancellationToken);
     }
+
+    public async Task<LeagueStandingsResponse?> GetLeagueStandingsAsync(int leagueId, int page, CancellationToken cancellationToken = default)
+    {
+        var client = _httpClientFactory.CreateClient(HttpClientName);
+        var response = await client.GetAsync($"leagues-classic/{leagueId}/standings/?page_standings={page}", cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<LeagueStandingsResponse>(cancellationToken);
+    }
+
+    public async Task<TeamHistoryResponse?> GetHistoryAsync(int teamId, CancellationToken cancellationToken = default)
+    {
+        var client = _httpClientFactory.CreateClient(HttpClientName);
+        var response = await client.GetAsync($"entry/{teamId}/history/", cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<TeamHistoryResponse>(cancellationToken);
+    }
 }
