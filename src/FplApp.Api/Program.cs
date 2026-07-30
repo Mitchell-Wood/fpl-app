@@ -1,4 +1,5 @@
 using FplApp.Api.Services;
+using FplApp.Api.Services.FotMob;
 using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -16,7 +17,17 @@ builder.Services.AddHttpClient(FplDataService.HttpClientName, client =>
         "Mozilla/5.0 (compatible; FplApp/1.0; +https://github.com/)");
 });
 
+builder.Services.AddHttpClient(FotMobLineupService.HttpClientName, client =>
+{
+    client.BaseAddress = new Uri("https://www.fotmob.com/api/data/");
+    client.DefaultRequestHeaders.UserAgent.ParseAdd(
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
+    client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+    client.DefaultRequestHeaders.Referrer = new Uri("https://www.fotmob.com/");
+});
+
 builder.Services.AddScoped<IFplDataService, FplDataService>();
+builder.Services.AddScoped<IFotMobLineupService, FotMobLineupService>();
 
 var app = builder.Build();
 
@@ -54,5 +65,12 @@ app.MapGet("/api/fixtures", async (IFplDataService fplDataService, CancellationT
         return Results.Ok(data);
     })
     .WithName("GetFixtures");
+
+app.MapGet("/api/predicted-lineups", async (int eventId, IFotMobLineupService lineupService, CancellationToken cancellationToken) =>
+    {
+        var data = await lineupService.GetLineupsForEventAsync(eventId, cancellationToken);
+        return Results.Ok(data);
+    })
+    .WithName("GetPredictedLineups");
 
 app.Run();

@@ -216,6 +216,62 @@
     color: var(--text-secondary);
   }
   .status-msg.error { color: var(--status-critical); }
+  .lineup-card {
+    border: 1px solid var(--gridline);
+    border-radius: 10px;
+    background: var(--surface-1);
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .lineup-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+  }
+  .lineup-status {
+    display: inline-block;
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 999px;
+    color: #ffffff;
+  }
+  .lineup-status-predicted { background: var(--series-1); }
+  .lineup-status-confirmed { background: var(--status-good); }
+  .lineup-status-unavailable { background: var(--gridline); color: var(--text-secondary); }
+  .lineup-teams {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+  .lineup-team h3 {
+    margin: 0 0 10px;
+    font-size: 1rem;
+  }
+  .lineup-position-group { margin-bottom: 8px; }
+  .lineup-position-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 2px;
+  }
+  .lineup-player-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    font-size: 0.88rem;
+  }
+  .lineup-player-list li { padding: 2px 0; }
+  .lineup-subs, .lineup-unavailable {
+    margin-top: 10px;
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+  }
+  @media (max-width: 640px) {
+    .lineup-teams { grid-template-columns: 1fr; }
+  }
   footer {
     text-align: center;
     color: var(--text-muted);
@@ -232,6 +288,7 @@
     <button data-panel="players" class="active">Players</button>
     <button data-panel="teams">Teams</button>
     <button data-panel="fixtures">Fixtures</button>
+    <button data-panel="lineups">Predicted Lineups</button>
   </nav>
 </header>
 <main>
@@ -324,6 +381,18 @@
       </table>
     </div>
   </section>
+
+  <section id="lineups" class="panel">
+    <h2 class="section-heading">Predicted lineups</h2>
+    <p class="subtitle" style="margin-top:-8px">
+      Sourced from FotMob (unofficial). Shows their algorithm-based "last starting XI" prediction until each
+      club's official team news drops, then the confirmed lineup.
+    </p>
+    <div class="controls">
+      <select id="lineup-gameweek"></select>
+    </div>
+    <div id="lineups-list"></div>
+  </section>
 </main>
 <footer>Data from fantasy.premierleague.com &middot; bootstrap-static cached 15 min server-side</footer>
 
@@ -336,6 +405,7 @@
     playerSort: { key: 'total_points', dir: 'desc' },
     teamSort: { key: 'position', dir: 'asc' },
     tickerSort: { key: 'avg', dir: 'asc' },
+    lineupsLoaded: false,
   };
 
   const DIFFICULTY_LABELS = { 1: 'Very easy', 2: 'Easy', 3: 'Medium', 4: 'Hard', 5: 'Very hard' };
@@ -366,6 +436,7 @@
       statusEl.style.display = 'none';
       initPositionFilter();
       initGameweekFilter();
+      initLineupGameweekFilter();
       renderPlayers();
       renderTeams();
       renderFixtures();
@@ -590,6 +661,92 @@
     }).join('');
   }
 
+  // ---- Predicted lineups ----
+
+  function initLineupGameweekFilter() {
+    const select = document.getElementById('lineup-gameweek');
+    const events = state.bootstrap.events;
+    select.innerHTML = '';
+    for (const e of events) {
+      const opt = document.createElement('option');
+      opt.value = e.id;
+      opt.textContent = e.name + (e.is_next ? ' (next)' : e.is_current ? ' (current)' : '');
+      if (e.is_next || e.is_current) opt.selected = true;
+      select.appendChild(opt);
+    }
+    if (!select.value && events.length) select.value = events[0].id;
+    select.addEventListener('change', renderLineups);
+  }
+
+  function statusBadge(status) {
+    const map = {
+      predicted: ['Predicted', 'lineup-status-predicted'],
+      confirmed: ['Confirmed', 'lineup-status-confirmed'],
+      unavailable: ['Not yet available', 'lineup-status-unavailable'],
+    };
+    const [label, cls] = map[status] || [status, 'lineup-status-unavailable'];
+    return `<span class="lineup-status ${cls}">${escapeHtml(label)}</span>`;
+  }
+
+  function renderLineupTeam(team) {
+    if (!team) return '<p class="muted">No data yet.</p>';
+    const groups = ['GK', 'DEF', 'MID', 'FWD'].map(pos => {
+      const players = team.starters.filter(p => p.position === pos);
+      if (!players.length) return '';
+      const items = players.map(p =>
+        `<li>${p.shirtNumber ? escapeHtml(p.shirtNumber) + ' &middot; ' : ''}${escapeHtml(p.name)}${p.isCaptain ? ' (C)' : ''}</li>`
+      ).join('');
+      return `<div class="lineup-position-group">
+        <div class="lineup-position-label">${pos}</div>
+        <ul class="lineup-player-list">${items}</ul>
+      </div>`;
+    }).join('');
+    const subs = team.subs.length
+      ? `<div class="lineup-subs"><strong>Subs:</strong> ${team.subs.map(p => escapeHtml(p.name)).join(', ')}</div>`
+      : '';
+    const unavailable = team.unavailable.length
+      ? `<div class="lineup-unavailable"><strong>Unavailable:</strong> ${team.unavailable.map(p =>
+          escapeHtml(p.name) + (p.reason ? ` (${escapeHtml(p.reason)})` : '')
+        ).join(', ')}</div>`
+      : '';
+    const formation = team.formation ? ` <span class="muted">(${escapeHtml(team.formation)})</span>` : '';
+    return `<h3>${escapeHtml(team.name)}${formation}</h3>${groups}${subs}${unavailable}`;
+  }
+
+  function renderLineupCard(lineup, fixture) {
+    const kickoff = fixture && fixture.kickoff_time
+      ? new Date(fixture.kickoff_time).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+      : 'TBC';
+    return `<div class="lineup-card">
+      <div class="lineup-card-header">
+        <strong>${kickoff}</strong>
+        ${statusBadge(lineup.status)}
+      </div>
+      <div class="lineup-teams">
+        <div class="lineup-team">${renderLineupTeam(lineup.homeTeam)}</div>
+        <div class="lineup-team">${renderLineupTeam(lineup.awayTeam)}</div>
+      </div>
+    </div>`;
+  }
+
+  async function renderLineups() {
+    const gw = document.getElementById('lineup-gameweek').value;
+    const container = document.getElementById('lineups-list');
+    if (!gw) return;
+    container.innerHTML = '<p class="status-msg">Loading lineups&hellip;</p>';
+    try {
+      const res = await fetch(`/api/predicted-lineups?eventId=${gw}`);
+      if (!res.ok) throw new Error('predicted-lineups ' + res.status);
+      const lineups = await res.json();
+      const fixturesById = new Map(state.fixtures.map(f => [f.id, f]));
+      lineups.sort((a, b) => new Date(a.kickoffTime || 0) - new Date(b.kickoffTime || 0));
+      container.innerHTML = lineups.map(l => renderLineupCard(l, fixturesById.get(l.fixtureId))).join('')
+        || '<p class="status-msg">No fixtures this gameweek.</p>';
+    } catch (err) {
+      container.innerHTML = `<p class="status-msg error">Could not load lineups: ${escapeHtml(err.message)}</p>`;
+    }
+  }
+
   // ---- Shared helpers ----
 
   function updateSortArrows(tableId, sortState) {
@@ -627,6 +784,10 @@
         document.querySelectorAll('section.panel').forEach(p => p.classList.remove('active'));
         btn.classList.add('active');
         document.getElementById(btn.dataset.panel).classList.add('active');
+        if (btn.dataset.panel === 'lineups' && !state.lineupsLoaded) {
+          state.lineupsLoaded = true;
+          renderLineups();
+        }
       });
     });
   }
