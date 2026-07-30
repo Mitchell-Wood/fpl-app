@@ -159,7 +159,7 @@ app.MapGet("/api/price-watch", async (int? count, IFplDataService fplDataService
     })
     .WithName("GetPriceWatch");
 
-app.MapGet("/api/transfer-suggestions", async (int teamId, int eventId, int? fixtureWeeks, int? perPlayer, IFplDataService fplDataService, SquadAnalysisService squadAnalysisService, TransferPlannerService transferPlannerService, CancellationToken cancellationToken) =>
+app.MapGet("/api/transfer-suggestions", async (int teamId, int eventId, int? fixtureWeeks, int? perPlayer, int? freeTransfers, IFplDataService fplDataService, SquadAnalysisService squadAnalysisService, TransferPlannerService transferPlannerService, CancellationToken cancellationToken) =>
     {
         var entry = await fplDataService.GetEntryAsync(teamId, cancellationToken);
         if (entry is null)
@@ -180,8 +180,10 @@ app.MapGet("/api/transfer-suggestions", async (int teamId, int eventId, int? fix
             bootstrap, fixtures, squad, picks.EntryHistory.Bank, fixtureWeeks ?? 5, perPlayer ?? 3);
         var fundedUpgrade = transferPlannerService.SuggestFundedUpgrade(
             bootstrap, fixtures, squad, picks.EntryHistory.Bank, fixtureWeeks ?? 5);
+        var plan = transferPlannerService.BuildTransferPlan(
+            bootstrap, fixtures, squad, picks.EntryHistory.Bank, fixtureWeeks ?? 5, freeTransfers ?? 1);
 
-        return Results.Ok(new { teamId, eventId, available = true, suggestions, fundedUpgrade });
+        return Results.Ok(new { teamId, eventId, available = true, suggestions, fundedUpgrade, plan });
     })
     .WithName("GetTransferSuggestions");
 

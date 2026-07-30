@@ -16,6 +16,14 @@ public class TransferSuggestion
     /// </summary>
     public int BudgetAvailable { get; set; }
 
+    /// <summary>
+    /// Estimated points gained over the fixture lookahead window by swapping to the top candidate,
+    /// projected from form (or FPL's expected points as a fallback) scaled by each upcoming
+    /// fixture's difficulty. Used to rank suggestions and judge whether a transfer — free or a hit
+    /// — is actually worth making.
+    /// </summary>
+    public double ExpectedPointsGain { get; set; }
+
     public List<TransferCandidate> Candidates { get; set; } = [];
 }
 

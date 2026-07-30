@@ -28,4 +28,7 @@ public class FundedUpgradeSuggestion
 
     /// <summary>Tenths of a million freed up by the downgrade leg.</summary>
     public int MoneySaved { get; set; }
+
+    /// <summary>Combined projected points gain from both legs together over the fixture lookahead window.</summary>
+    public double NetExpectedPointsGain { get; set; }
 }
