@@ -549,8 +549,8 @@
   <section id="recommendations" class="panel">
     <h2 class="section-heading">Players to consider buying</h2>
     <p class="subtitle" style="margin-top:-8px">
-      Ranked by recent form and points-per-cost among available (non-injured/suspended) players,
-      adjusted for how easy their upcoming fixtures are.
+      Ranked by recent form, FPL's own expected points for next gameweek, and points-per-cost among
+      available (non-injured/suspended) players, adjusted for how easy their upcoming fixtures are.
     </p>
     <div class="controls">
       <select id="rec-position">
@@ -619,8 +619,8 @@
         Each idea below is independent — it assumes you make just that one swap, starting fresh
         from your bank each time, not several transfers at once. They're numbered biggest-upgrade-
         first (#1 = the single best improvement available in your squad right now), scored on
-        recent form, season points, and how easy each player's upcoming fixtures are. Replacements
-        within each idea are also listed best-first.
+        recent form, FPL's own expected points for next gameweek, and how easy each player's
+        upcoming fixtures are. Replacements within each idea are also listed best-first.
       </p>
       <p class="muted" style="font-size:0.82rem;margin:0 0 10px;">
         "Budget" is what you'd have to spend on a replacement if you sold that player alone: your
@@ -1835,12 +1835,16 @@
   // Mirrors PlayerRecommendationService's scoring (form weighted heavily, plus points-per-cost,
   // scaled by upcoming fixture ease) so demo candidate ranking reacts to the gameweek lookahead
   // the same way the real /api/transfer-suggestions endpoint does.
+  // Mirrors PlayerRecommendationService.Score: form and FPL's own next-gameweek expected-points
+  // estimate (ep_next) as the two leading signals, points-per-cost as a smaller tiebreaker, scaled
+  // by upcoming fixture ease over the chosen lookahead window.
   function scoreCandidate(p, difficultyByTeam) {
     const form = parseFloat(p.form) || 0;
+    const expectedPointsNext = parseFloat(p.ep_next) || 0;
     const costInMillions = p.now_cost / 10;
     if (costInMillions <= 0) return 0;
     const valuePerCost = p.total_points / costInMillions;
-    const baseScore = (form * 2) + valuePerCost;
+    const baseScore = (form * 2) + (expectedPointsNext * 2) + valuePerCost;
     const avgDifficulty = difficultyByTeam.get(p.team) ?? 3.0;
     const fixtureFactor = (6 - avgDifficulty) / 3;
     return baseScore * fixtureFactor;

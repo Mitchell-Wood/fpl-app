@@ -35,6 +35,10 @@ public class Player
     [JsonPropertyName("points_per_game")]
     public string PointsPerGame { get; set; } = string.Empty;
 
+    /// <summary>FPL's own predicted points for this player next gameweek.</summary>
+    [JsonPropertyName("ep_next")]
+    public string ExpectedPointsNext { get; set; } = string.Empty;
+
     [JsonPropertyName("selected_by_percent")]
     public string SelectedByPercent { get; set; } = string.Empty;
 
