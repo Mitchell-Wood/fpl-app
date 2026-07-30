@@ -699,49 +699,86 @@
   }
 
   // ---- Estimated clean sheet chance ----
-  // FPL doesn't publish an "expected clean sheets" stat. This derives one from real results:
-  // each team's actual goals-scored/conceded rate this season, combined via a standard
-  // attack-strength-vs-defence-weakness model and converted to a probability with the Poisson
-  // distribution. It's a genuine estimate, not an official figure, and returns null (shown as "—")
-  // until at least one fixture has been played this season.
+  // FPL doesn't publish an "expected clean sheets" stat, and there's no other attack/defense
+  // strength calc elsewhere in this app to reuse (the fixture-difficulty ticker uses FPL's own
+  // opaque 1-5 difficulty rating, not goals). So this derives an estimate from real results: each
+  // team's actual goals-scored/conceded rate *split by home/away* (since home advantage is real and
+  // teams score/concede at different rates home vs away), combined via a standard attack-strength-
+  // vs-defence-weakness model, converted to a probability with the Poisson distribution. It's a
+  // genuine estimate, not an official figure, and returns null (shown as "—") until there's a
+  // finished fixture to base it on.
 
   function computeTeamGoalRecords() {
-    const records = new Map(); // teamId -> { for, against, games }
-    const add = (teamId, goalsFor, goalsAgainst) => {
-      const r = records.get(teamId) || { for: 0, against: 0, games: 0 };
-      r.for += goalsFor;
-      r.against += goalsAgainst;
-      r.games += 1;
-      records.set(teamId, r);
+    // teamId -> { home: {for,against,games}, away: {for,against,games}, overall: {for,against,games} }
+    const records = new Map();
+    const ensure = id => {
+      if (!records.has(id)) {
+        records.set(id, {
+          home: { for: 0, against: 0, games: 0 },
+          away: { for: 0, against: 0, games: 0 },
+          overall: { for: 0, against: 0, games: 0 },
+        });
+      }
+      return records.get(id);
     };
     for (const f of state.fixtures) {
       if (!f.finished || f.team_h_score == null || f.team_a_score == null) continue;
-      add(f.team_h, f.team_h_score, f.team_a_score);
-      add(f.team_a, f.team_a_score, f.team_h_score);
+
+      const home = ensure(f.team_h);
+      home.home.for += f.team_h_score; home.home.against += f.team_a_score; home.home.games += 1;
+      home.overall.for += f.team_h_score; home.overall.against += f.team_a_score; home.overall.games += 1;
+
+      const away = ensure(f.team_a);
+      away.away.for += f.team_a_score; away.away.against += f.team_h_score; away.away.games += 1;
+      away.overall.for += f.team_a_score; away.overall.against += f.team_h_score; away.overall.games += 1;
     }
     return records;
   }
 
-  function estimateCleanSheetChance(records, teamId, opponentId) {
+  function leagueVenueAverages(records) {
+    let homeGames = 0, homeGoals = 0, awayGames = 0, awayGoals = 0, overallGames = 0, overallGoals = 0;
+    for (const r of records.values()) {
+      homeGames += r.home.games; homeGoals += r.home.for;
+      awayGames += r.away.games; awayGoals += r.away.for;
+      overallGames += r.overall.games; overallGoals += r.overall.for;
+    }
+    return {
+      home: homeGames > 0 ? homeGoals / homeGames : null,
+      away: awayGames > 0 ? awayGoals / awayGames : null,
+      overall: overallGames > 0 ? overallGoals / overallGames : null,
+    };
+  }
+
+  // Prefers the venue-specific rate (e.g. a team's home defensive record), falling back to their
+  // combined overall rate early in the season when there isn't a venue-specific sample yet.
+  function venueRate(venueRecord, overallRecord, field) {
+    if (venueRecord && venueRecord.games > 0) return venueRecord[field] / venueRecord.games;
+    if (overallRecord && overallRecord.games > 0) return overallRecord[field] / overallRecord.games;
+    return null;
+  }
+
+  function estimateCleanSheetChance(records, teamId, opponentId, teamIsHome) {
     const team = records.get(teamId);
     const opponent = records.get(opponentId);
-    if (!team || team.games === 0 || !opponent || opponent.games === 0) return null;
+    if (!team || !opponent) return null;
 
-    let totalGames = 0, totalGoals = 0;
-    for (const r of records.values()) { totalGames += r.games; totalGoals += r.for; }
-    if (totalGames === 0) return null;
-    const leagueAvgGoalsPerGame = totalGoals / totalGames;
-    if (leagueAvgGoalsPerGame <= 0) return null;
+    const teamDefenceRate = venueRate(teamIsHome ? team.home : team.away, team.overall, 'against');
+    const opponentAttackRate = venueRate(teamIsHome ? opponent.away : opponent.home, opponent.overall, 'for');
+    if (teamDefenceRate == null || opponentAttackRate == null) return null;
 
-    const teamDefenceRate = team.against / team.games;
-    const opponentAttackRate = opponent.for / opponent.games;
-    const expectedGoalsConceded = teamDefenceRate * (opponentAttackRate / leagueAvgGoalsPerGame);
+    // Normalize the opponent's attack rate against the league's average scoring rate in that
+    // same venue context (home teams typically outscore away teams league-wide).
+    const avgs = leagueVenueAverages(records);
+    const leagueAvg = (teamIsHome ? avgs.away : avgs.home) ?? avgs.overall;
+    if (!leagueAvg || leagueAvg <= 0) return null;
+
+    const expectedGoalsConceded = teamDefenceRate * (opponentAttackRate / leagueAvg);
     return Math.exp(-expectedGoalsConceded);
   }
 
   function csChip(chance) {
     if (chance == null) return '<span class="muted">—</span>';
-    return `<span title="Estimated from goals scored/conceded so far this season">${(chance * 100).toFixed(0)}%</span>`;
+    return `<span title="Estimated from home/away-split goals scored/conceded so far this season">${(chance * 100).toFixed(0)}%</span>`;
   }
 
   function avgUpcomingCleanSheetChanceByTeam(weeks) {
@@ -754,8 +791,8 @@
 
     for (const f of state.fixtures) {
       if (!gwIds.has(f.event)) continue;
-      const homeChance = estimateCleanSheetChance(records, f.team_h, f.team_a);
-      const awayChance = estimateCleanSheetChance(records, f.team_a, f.team_h);
+      const homeChance = estimateCleanSheetChance(records, f.team_h, f.team_a, true);
+      const awayChance = estimateCleanSheetChance(records, f.team_a, f.team_h, false);
       if (homeChance != null) { if (!byTeam.has(f.team_h)) byTeam.set(f.team_h, []); byTeam.get(f.team_h).push(homeChance); }
       if (awayChance != null) { if (!byTeam.has(f.team_a)) byTeam.set(f.team_a, []); byTeam.get(f.team_a).push(awayChance); }
     }
@@ -945,8 +982,8 @@
       const score = f.finished || f.started
         ? `${f.team_h_score ?? '-'} – ${f.team_a_score ?? '-'}`
         : '—';
-      const homeCs = estimateCleanSheetChance(goalRecords, f.team_h, f.team_a);
-      const awayCs = estimateCleanSheetChance(goalRecords, f.team_a, f.team_h);
+      const homeCs = estimateCleanSheetChance(goalRecords, f.team_h, f.team_a, true);
+      const awayCs = estimateCleanSheetChance(goalRecords, f.team_a, f.team_h, false);
       return `
         <tr>
           <td>${kickoff}</td>
