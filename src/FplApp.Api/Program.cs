@@ -33,6 +33,7 @@ builder.Services.AddSingleton<PlayerRecommendationService>();
 builder.Services.AddSingleton<SquadAnalysisService>();
 builder.Services.AddSingleton<CaptaincyService>();
 builder.Services.AddSingleton<PriceChangeWatchService>();
+builder.Services.AddSingleton<TransferPlannerService>();
 
 var app = builder.Build();
 
@@ -157,5 +158,29 @@ app.MapGet("/api/price-watch", async (int? count, IFplDataService fplDataService
         return Results.Ok(result);
     })
     .WithName("GetPriceWatch");
+
+app.MapGet("/api/transfer-suggestions", async (int teamId, int eventId, int? fixtureWeeks, int? perPlayer, IFplDataService fplDataService, SquadAnalysisService squadAnalysisService, TransferPlannerService transferPlannerService, CancellationToken cancellationToken) =>
+    {
+        var entry = await fplDataService.GetEntryAsync(teamId, cancellationToken);
+        if (entry is null)
+        {
+            return Results.NotFound(new { message = "No FPL team found with that ID." });
+        }
+
+        var picks = await fplDataService.GetPicksAsync(teamId, eventId, cancellationToken);
+        if (picks is null)
+        {
+            return Results.Ok(new { teamId, eventId, available = false });
+        }
+
+        var bootstrap = await fplDataService.GetBootstrapStaticAsync(cancellationToken);
+        var fixtures = await fplDataService.GetFixturesAsync(cancellationToken);
+        var squad = squadAnalysisService.AnalyzeSquad(bootstrap, fixtures, picks);
+        var suggestions = transferPlannerService.SuggestTransfers(
+            bootstrap, fixtures, squad, picks.EntryHistory.Bank, fixtureWeeks ?? 5, perPlayer ?? 3);
+
+        return Results.Ok(new { teamId, eventId, available = true, suggestions });
+    })
+    .WithName("GetTransferSuggestions");
 
 app.Run();

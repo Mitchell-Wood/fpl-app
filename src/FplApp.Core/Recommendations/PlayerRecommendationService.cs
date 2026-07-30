@@ -15,12 +15,16 @@ public class PlayerRecommendationService
     /// <param name="elementTypeId">Optional position filter (1=GK, 2=DEF, 3=MID, 4=FWD).</param>
     /// <param name="count">Maximum number of players to return.</param>
     /// <param name="fixtureLookaheadWeeks">How many upcoming gameweeks of fixtures to factor in.</param>
+    /// <param name="excludePlayerIds">Player ids to leave out, e.g. players already owned.</param>
+    /// <param name="maxCost">Maximum now_cost (tenths of a million) a candidate may have.</param>
     public IReadOnlyList<Player> RecommendPlayers(
         BootstrapStatic bootstrap,
         IReadOnlyList<Fixture> fixtures,
         int? elementTypeId = null,
         int count = 10,
-        int fixtureLookaheadWeeks = 5)
+        int fixtureLookaheadWeeks = 5,
+        IReadOnlySet<int>? excludePlayerIds = null,
+        int? maxCost = null)
     {
         ArgumentNullException.ThrowIfNull(bootstrap);
         ArgumentNullException.ThrowIfNull(fixtures);
@@ -29,7 +33,9 @@ public class PlayerRecommendationService
 
         var candidates = bootstrap.Elements
             .Where(p => p.Status == "a") // available (not injured/suspended/unavailable)
-            .Where(p => elementTypeId is null || p.ElementType == elementTypeId);
+            .Where(p => elementTypeId is null || p.ElementType == elementTypeId)
+            .Where(p => excludePlayerIds is null || !excludePlayerIds.Contains(p.Id))
+            .Where(p => maxCost is null || p.NowCost <= maxCost);
 
         return candidates
             .OrderByDescending(p => Score(p, difficultyByTeam))

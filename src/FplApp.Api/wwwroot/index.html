@@ -505,6 +505,15 @@
       <div id="chip-strategy-content" style="font-size:0.9rem;line-height:1.6;"></div>
     </div>
 
+    <div id="transfer-suggestions-section" style="display:none">
+      <h3 class="section-heading" style="font-size:0.95rem;margin-top:24px;">Transfer suggestions</h3>
+      <p class="muted" style="font-size:0.82rem;margin:-6px 0 10px;">
+        Budget assumes bank + the outgoing player's current price — not necessarily your exact FPL
+        sell price, which can be lower once a player has risen in value.
+      </p>
+      <div id="transfer-suggestions-content"></div>
+    </div>
+
     <div class="table-wrap" id="my-team-table-wrap" style="display:none">
       <table id="my-team-table">
         <thead>
@@ -1244,6 +1253,36 @@
     section.style.display = '';
   }
 
+  function renderTransferSuggestions(suggestions) {
+    const section = document.getElementById('transfer-suggestions-section');
+    const container = document.getElementById('transfer-suggestions-content');
+    if (!suggestions.length) {
+      section.style.display = 'none';
+      return;
+    }
+    container.innerHTML = suggestions.map(s => {
+      const candidatesHtml = s.candidates.length
+        ? s.candidates.map(c => `
+            <div style="display:flex;justify-content:space-between;padding:4px 0;">
+              <span>${escapeHtml(c.webName)} <span class="muted">(${escapeHtml(c.teamName)})</span></span>
+              <span class="num">£${(c.nowCost / 10).toFixed(1)}m &middot; Form ${c.form.toFixed(1)} &middot; ${c.totalPoints} pts</span>
+            </div>
+          `).join('')
+        : `<p class="muted">No affordable alternatives found within budget.</p>`;
+      return `
+        <div style="padding:10px 0;border-bottom:1px solid var(--gridline);">
+          <div>
+            <strong>${escapeHtml(s.outWebName)}</strong> <span class="muted">(${escapeHtml(s.outTeamName)})</span>
+            ${s.outFlags.map(flagChip).join('')}
+            <span class="muted" style="float:right;">Budget: £${(s.budgetAvailable / 10).toFixed(1)}m</span>
+          </div>
+          <div style="margin-top:6px;">${candidatesHtml}</div>
+        </div>
+      `;
+    }).join('');
+    section.style.display = '';
+  }
+
   async function loadMyTeam() {
     const teamIdInput = document.getElementById('my-team-id');
     const teamId = teamIdInput.value.trim();
@@ -1253,12 +1292,14 @@
     const tableWrap = document.getElementById('my-team-table-wrap');
     const captaincySection = document.getElementById('captaincy-section');
     const chipStrategySection = document.getElementById('chip-strategy-section');
+    const transferSuggestionsSection = document.getElementById('transfer-suggestions-section');
 
     statusEl.style.display = 'none';
     summaryEl.textContent = '';
     tableWrap.style.display = 'none';
     captaincySection.style.display = 'none';
     chipStrategySection.style.display = 'none';
+    transferSuggestionsSection.style.display = 'none';
 
     if (!teamId || !/^\d+$/.test(teamId)) {
       statusEl.textContent = 'Enter a numeric FPL team ID.';
@@ -1274,9 +1315,10 @@
     statusEl.style.display = '';
 
     try {
-      const [teamRes, captainRes] = await Promise.all([
+      const [teamRes, captainRes, transferRes] = await Promise.all([
         fetch(`/api/my-team?teamId=${encodeURIComponent(teamId)}&eventId=${encodeURIComponent(eventId)}`),
         fetch(`/api/captain-suggestions?teamId=${encodeURIComponent(teamId)}&eventId=${encodeURIComponent(eventId)}`),
+        fetch(`/api/transfer-suggestions?teamId=${encodeURIComponent(teamId)}&eventId=${encodeURIComponent(eventId)}`),
       ]);
       if (teamRes.status === 404) {
         statusEl.textContent = 'No FPL team found with that ID. Double-check it from the FPL site URL.';
@@ -1303,6 +1345,11 @@
       if (captainRes.ok) {
         const captainData = await captainRes.json();
         if (captainData.available) renderCaptaincy(captainData.suggestions);
+      }
+
+      if (transferRes.ok) {
+        const transferData = await transferRes.json();
+        if (transferData.available) renderTransferSuggestions(transferData.suggestions);
       }
     } catch (err) {
       statusEl.textContent = 'Could not load your team: ' + err.message;
