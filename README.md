@@ -6,6 +6,7 @@ A .NET 9 solution that proxies data from the [Fantasy Premier League API](https:
 
 - **`src/FplApp.Core`** — class library with domain models (`BootstrapStatic`, `Player`, `Team`, `Event`, `ElementType`, `Fixture`) and a `PlayerRecommendationService` that ranks available players by recent form and points-per-cost.
 - **`src/FplApp.Api`** — ASP.NET Core Web API that fetches and serves FPL data. `FplDataService` calls the upstream API via `IHttpClientFactory` and caches the `bootstrap-static` response in memory for 15 minutes (it changes infrequently); fixtures are always fetched fresh since scores/state change during live play.
+- **`src/FplApp.Core.Tests`** — xUnit tests for the pure recommendation/scoring logic in `FplApp.Core`.
 
 ## Prerequisites
 
@@ -53,7 +54,11 @@ Navigating to the site root (e.g. `https://localhost:7114/` or `http://localhost
 dotnet build FplApp.sln
 ```
 
-There are no automated tests yet.
+```bash
+dotnet test FplApp.sln
+```
+
+`FplApp.Core.Tests` covers the scoring/estimation logic in `FplApp.Core.Recommendations` (transfer accrual rules, fixture difficulty windows, etc.) — the kind of logic that fails silently (bad advice, no exception) rather than loudly, so it's tested directly rather than only exercised through the UI.
 
 ## Notes
 
