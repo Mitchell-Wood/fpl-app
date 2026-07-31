@@ -34,6 +34,7 @@ builder.Services.AddSingleton<SquadAnalysisService>();
 builder.Services.AddSingleton<CaptaincyService>();
 builder.Services.AddSingleton<PriceChangeWatchService>();
 builder.Services.AddSingleton<TransferPlannerService>();
+builder.Services.AddSingleton<SquadBuilderService>();
 
 var app = builder.Build();
 
@@ -253,5 +254,52 @@ app.MapGet("/api/manager-history", async (int teamId, IFplDataService fplDataSer
         });
     })
     .WithName("GetManagerHistory");
+
+app.MapGet("/api/wildcard-squad", async (int? teamId, int? eventId, int? budget, int? fixtureLookaheadWeeks, IFplDataService fplDataService, SquadBuilderService squadBuilderService, CancellationToken cancellationToken) =>
+    {
+        var lookahead = fixtureLookaheadWeeks ?? 1;
+        int resolvedBudget;
+
+        if (budget is { } explicitBudget)
+        {
+            // A manual override always wins, even with a team loaded — e.g. "what if I had less to spend".
+            resolvedBudget = explicitBudget;
+        }
+        else if (teamId is { } id && eventId is { } evt)
+        {
+            var entry = await fplDataService.GetEntryAsync(id, cancellationToken);
+            if (entry is null)
+            {
+                return Results.NotFound(new { message = "No FPL team found with that ID." });
+            }
+
+            var picks = await fplDataService.GetPicksAsync(id, evt, cancellationToken);
+            if (picks is null)
+            {
+                return Results.Ok(new { teamId = id, eventId = evt, available = false });
+            }
+
+            // Bank plus current squad value: what a full rebuild (Wildcard/Free Hit) has to spend.
+            resolvedBudget = picks.EntryHistory.Bank + picks.EntryHistory.Value;
+        }
+        else
+        {
+            resolvedBudget = 1000; // £100.0m — the standard starting budget, used when no team is loaded
+        }
+
+        var bootstrap = await fplDataService.GetBootstrapStaticAsync(cancellationToken);
+        var fixtures = await fplDataService.GetFixturesAsync(cancellationToken);
+
+        try
+        {
+            var squad = squadBuilderService.BuildSquad(bootstrap, fixtures, resolvedBudget, lookahead);
+            return Results.Ok(new { available = true, budget = resolvedBudget, fixtureLookaheadWeeks = lookahead, squad });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Results.BadRequest(new { message = ex.Message });
+        }
+    })
+    .WithName("GetWildcardSquad");
 
 app.Run();

@@ -58,8 +58,8 @@ public class TransferPlannerService
             // Points gain is the user-facing "how good is this transfer" number and what ranks
             // suggestions — directly comparable to the cost of a -4 hit. Kept even when negative so
             // the full picture (including transfers that would cost points) can be shown.
-            var pointsGain = EstimateProjectedPoints(candidates[0], rawDifficultyByTeam)
-                - EstimateProjectedPoints(currentPlayer, rawDifficultyByTeam);
+            var pointsGain = PlayerProjection.EstimateProjectedPoints(candidates[0], rawDifficultyByTeam)
+                - PlayerProjection.EstimateProjectedPoints(currentPlayer, rawDifficultyByTeam);
 
             results.Add(new CandidateSuggestion(pick, candidates, budget, pointsGain));
         }
@@ -274,8 +274,8 @@ public class TransferPlannerService
                 }
 
                 bestNetGain = netGain;
-                var netPointsGain = (EstimateProjectedPoints(downgradeTo, rawDifficultyByTeam) - EstimateProjectedPoints(downgradeFromPlayer, rawDifficultyByTeam))
-                    + (EstimateProjectedPoints(upgradeTo, rawDifficultyByTeam) - EstimateProjectedPoints(upgradeFromPlayer, rawDifficultyByTeam));
+                var netPointsGain = (PlayerProjection.EstimateProjectedPoints(downgradeTo, rawDifficultyByTeam) - PlayerProjection.EstimateProjectedPoints(downgradeFromPlayer, rawDifficultyByTeam))
+                    + (PlayerProjection.EstimateProjectedPoints(upgradeTo, rawDifficultyByTeam) - PlayerProjection.EstimateProjectedPoints(upgradeFromPlayer, rawDifficultyByTeam));
 
                 best = new FundedUpgradeSuggestion
                 {
@@ -312,28 +312,6 @@ public class TransferPlannerService
         }
 
         return best;
-    }
-
-    /// <summary>
-    /// Projects a player's points over the fixture lookahead window: recent form (or FPL's own
-    /// expected-points-next-gameweek, or season points-per-game, whichever is the best signal
-    /// available) applied to each upcoming fixture and scaled by that fixture's difficulty. Summing
-    /// per-fixture — rather than using an average — means a blank gameweek contributes nothing and
-    /// a double gameweek counts twice, automatically.
-    /// </summary>
-    private static double EstimateProjectedPoints(Player player, IReadOnlyDictionary<int, List<int>> rawDifficultiesByTeam)
-    {
-        var form = ParseDecimal(player.Form);
-        var expectedPointsNext = ParseDecimal(player.ExpectedPointsNext);
-        var pointsPerGame = ParseDecimal(player.PointsPerGame);
-        var effectiveRate = form > 0 ? form : (expectedPointsNext > 0 ? expectedPointsNext : pointsPerGame);
-
-        if (!rawDifficultiesByTeam.TryGetValue(player.Team, out var difficulties) || difficulties.Count == 0)
-        {
-            return 0;
-        }
-
-        return difficulties.Sum(difficulty => effectiveRate * ((6.0 - difficulty) / 3.0));
     }
 
     private static double ParseDecimal(string value)

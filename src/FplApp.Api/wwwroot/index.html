@@ -676,6 +676,37 @@
         <tbody></tbody>
       </table>
     </div>
+
+    <h3 class="section-heading" style="font-size:0.95rem;">Squad builder</h3>
+    <p class="muted" style="font-size:0.82rem;margin:-6px 0 10px;">
+      Builds the best legal 15-man squad (2 GK / 5 DEF / 5 MID / 3 FWD, max 3 players from any one
+      team) under a budget — for planning a Wildcard or Free Hit from scratch, rather than one
+      transfer at a time. A Free Hit only lasts a single gameweek, so it's optimized for just that
+      week; a Wildcard sticks around, so pick how many gameweeks ahead to weigh fixtures over.
+      Loading a team above fills in its bank + squad value as the starting budget — edit it freely,
+      or use this without loading a team at all.
+    </p>
+    <div class="controls" style="margin-top:0;">
+      <label class="inline-label" for="squad-builder-budget">Budget
+        <input id="squad-builder-budget" type="number" min="0" step="0.1" value="100.0" style="width:80px;">
+        £m
+      </label>
+      <label class="inline-label" style="gap:4px;">
+        <input id="squad-builder-chip-freehit" type="radio" name="squad-builder-chip" value="freehit" checked style="width:auto;">
+        Free Hit
+      </label>
+      <label class="inline-label" style="gap:4px;">
+        <input id="squad-builder-chip-wildcard" type="radio" name="squad-builder-chip" value="wildcard" style="width:auto;">
+        Wildcard
+      </label>
+      <label class="inline-label" for="squad-builder-weeks" id="squad-builder-weeks-label" style="display:none">Plan ahead
+        <input id="squad-builder-weeks" type="number" min="1" max="20" value="5">
+        gameweeks
+      </label>
+      <button id="squad-builder-build" type="button">Build squad</button>
+    </div>
+    <div id="squad-builder-status" class="status-msg" style="display:none"></div>
+    <div id="squad-builder-content"></div>
   </section>
 
   <section id="mini-leagues" class="panel">
@@ -1741,6 +1772,95 @@
     document.getElementById('transfer-suggestions-section').style.display = (hasSuggestions || hasFundedUpgrade || hasPlan) ? '' : 'none';
   }
 
+  // ---- Squad builder (Wildcard / Free Hit) ----
+
+  const SQUAD_BUILDER_POSITION_LABELS = { 1: 'Goalkeepers', 2: 'Defenders', 3: 'Midfielders', 4: 'Forwards' };
+
+  function setSquadBuilderBudget(budgetMillions) {
+    document.getElementById('squad-builder-budget').value = budgetMillions.toFixed(1);
+  }
+
+  function squadBuilderPlayerRow(p) {
+    return `
+      <li style="display:flex;justify-content:space-between;">
+        <span>${p.isCaptain ? '<span class="captain-badge">C</span> ' : ''}${escapeHtml(p.webName)} <span class="muted">(${escapeHtml(p.teamName)})</span></span>
+        <span class="num">£${(p.nowCost / 10).toFixed(1)}m &middot; ${p.projectedPoints.toFixed(1)} pts</span>
+      </li>
+    `;
+  }
+
+  function renderSquadBuilder(data) {
+    const container = document.getElementById('squad-builder-content');
+    const squad = data.squad;
+    const byPosition = new Map([1, 2, 3, 4].map(t => [t, squad.players.filter(p => p.elementType === t)]));
+
+    const groupHtml = elementType => {
+      const players = byPosition.get(elementType) ?? [];
+      const starters = players.filter(p => p.isStarting);
+      const bench = players.filter(p => !p.isStarting);
+      return `
+        <div class="lineup-position-group">
+          <div class="lineup-position-label">${SQUAD_BUILDER_POSITION_LABELS[elementType]}</div>
+          <ul class="lineup-player-list">${starters.map(squadBuilderPlayerRow).join('')}</ul>
+          ${bench.length ? `<div class="muted" style="font-size:0.76rem;margin:6px 0 2px;">Bench</div><ul class="lineup-player-list">${bench.map(squadBuilderPlayerRow).join('')}</ul>` : ''}
+        </div>
+      `;
+    };
+
+    container.innerHTML = `
+      <div class="lineup-card">
+        <div class="lineup-card-header">
+          <div>
+            <div style="font-weight:700;">Formation ${escapeHtml(squad.formation)}</div>
+            <div class="muted" style="font-size:0.82rem;">
+              Starting XI projected: ${squad.startingElevenProjectedPoints.toFixed(1)} pts over
+              ${data.fixtureLookaheadWeeks} gameweek${data.fixtureLookaheadWeeks === 1 ? '' : 's'}
+            </div>
+          </div>
+          <div class="muted" style="font-size:0.82rem;text-align:right;">
+            Spent £${(squad.totalCost / 10).toFixed(1)}m of £${(squad.budget / 10).toFixed(1)}m<br>
+            £${(squad.budgetRemaining / 10).toFixed(1)}m unspent
+          </div>
+        </div>
+        ${[1, 2, 3, 4].map(groupHtml).join('')}
+      </div>
+    `;
+  }
+
+  async function buildSquad() {
+    const statusEl = document.getElementById('squad-builder-status');
+    const container = document.getElementById('squad-builder-content');
+    const budgetMillions = parseFloat(document.getElementById('squad-builder-budget').value);
+    const isWildcard = document.getElementById('squad-builder-chip-wildcard').checked;
+    const weeks = isWildcard ? (parseInt(document.getElementById('squad-builder-weeks').value, 10) || 1) : 1;
+
+    container.innerHTML = '';
+    statusEl.classList.remove('error');
+    statusEl.style.display = '';
+
+    if (!(budgetMillions > 0)) {
+      statusEl.textContent = 'Enter a budget greater than £0.0m.';
+      statusEl.classList.add('error');
+      return;
+    }
+
+    statusEl.textContent = 'Building squad…';
+
+    try {
+      const budgetTenths = Math.round(budgetMillions * 10);
+      const res = await fetch(`/api/wildcard-squad?budget=${budgetTenths}&fixtureLookaheadWeeks=${weeks}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.message || `wildcard-squad ${res.status}`);
+      }
+      statusEl.style.display = 'none';
+      renderSquadBuilder(data);
+    } catch (err) {
+      statusEl.textContent = 'Could not build a squad: ' + err.message;
+      statusEl.classList.add('error');
+    }
+  }
+
   function getTransferFixtureWeeks() {
     return Math.min(20, Math.max(1, parseInt(document.getElementById('transfer-fixture-weeks').value, 10) || 5));
   }
@@ -1825,6 +1945,7 @@
       statusEl.style.display = 'none';
       summaryEl.textContent = `${data.teamName} (${data.managerName}) — ${data.points} pts this GW `
         + `· Bank: £${data.bank.toFixed(1)}m · Squad value: £${data.value.toFixed(1)}m`;
+      setSquadBuilderBudget(data.bank + data.value);
       renderMyTeamRows(data.picks);
       tableWrap.style.display = '';
       renderChipStrategy(data.picks);
@@ -2158,6 +2279,7 @@
     summaryEl.innerHTML = `Sample Squad (Demo Manager) — 0 pts this GW `
       + `&middot; Bank: £${(bankTenths / 10).toFixed(1)}m &middot; Squad value: £${(value / 10).toFixed(1)}m`
       + `<span class="demo-badge">Demo data</span>`;
+    setSquadBuilderBudget((bankTenths + value) / 10);
     renderMyTeamRows(picks);
     tableWrap.style.display = '';
     renderChipStrategy(picks);
@@ -2473,6 +2595,10 @@
   document.getElementById('price-watch-count').addEventListener('input', renderPriceWatch);
   document.getElementById('my-team-load').addEventListener('click', loadMyTeam);
   document.getElementById('my-team-demo').addEventListener('click', loadDemoMyTeam);
+  document.getElementById('squad-builder-build').addEventListener('click', buildSquad);
+  document.querySelectorAll('input[name="squad-builder-chip"]').forEach(radio => radio.addEventListener('change', () => {
+    document.getElementById('squad-builder-weeks-label').style.display = document.getElementById('squad-builder-chip-wildcard').checked ? '' : 'none';
+  }));
   document.getElementById('my-team-gameweek').addEventListener('change', () => {
     if (document.getElementById('my-team-id').value.trim()) loadMyTeam();
   });
