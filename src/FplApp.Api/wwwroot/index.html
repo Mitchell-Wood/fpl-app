@@ -7,9 +7,13 @@
 <style>
   :root {
     color-scheme: light;
-    --brand-1:        #2b0030;
-    --brand-2:        #4a0a52;
+    --brand-1:        #1f0025;
+    --brand-2:        #3c0a52;
+    --brand-3:        #6d1b8f;
     --brand-accent:   #00e08c;
+    --accent-cta-bg:      #00e08c;
+    --accent-cta-bg-hover: #05f2a0;
+    --accent-cta-text:    #062e21;
     --surface-1:      #ffffff;
     --surface-raised: #ffffff;
     --page-plane:     #f6f5fa;
@@ -25,50 +29,66 @@
     --status-serious:   #f97316;
     --status-critical:  #dc2626;
     --row-hover: rgba(124,58,237,0.05);
-    --shadow-sm: 0 1px 2px rgba(23,18,31,0.05);
-    --shadow-md: 0 4px 16px rgba(23,18,31,0.06);
+    --shadow-sm: 0 1px 2px rgba(23,18,31,0.06);
+    --shadow-md: 0 8px 24px rgba(23,18,31,0.08);
+    --radius-card: 14px;
+    --pitch-1: #1a7a3e;
+    --pitch-2: #1f8a46;
+    --pitch-line: rgba(255,255,255,0.55);
   }
   @media (prefers-color-scheme: dark) {
     :root:where(:not([data-theme="light"])) {
       color-scheme: dark;
-      --surface-1:      #1b1723;
-      --surface-raised: #221d2c;
-      --page-plane:     #120f18;
+      --surface-1:      #19141f;
+      --surface-raised: #211a29;
+      --page-plane:     #100c15;
       --text-primary:   #f6f4fa;
       --text-secondary: #bcb5cc;
       --text-muted:     #8b8499;
       --gridline:       #2e2838;
       --baseline:       #3c3448;
       --border:         rgba(255,255,255,0.10);
-      --series-1:       #a78bfa;
+      --series-1:       #b298fb;
       --status-good:      #34d399;
       --status-warning:   #fbbf24;
       --status-serious:   #fb923c;
       --status-critical:  #f87171;
-      --row-hover: rgba(167,139,250,0.09);
-      --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
-      --shadow-md: 0 4px 16px rgba(0,0,0,0.35);
+      --row-hover: rgba(178,152,251,0.10);
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.35);
+      --shadow-md: 0 8px 28px rgba(0,0,0,0.4);
+      --accent-cta-bg:      #05f2a0;
+      --accent-cta-bg-hover: #35ffb8;
+      --accent-cta-text:    #05261b;
+      --pitch-1: #0e4b26;
+      --pitch-2: #12592e;
+      --pitch-line: rgba(255,255,255,0.4);
     }
   }
   :root[data-theme="dark"] {
     color-scheme: dark;
-    --surface-1:      #1b1723;
-    --surface-raised: #221d2c;
-    --page-plane:     #120f18;
+    --surface-1:      #19141f;
+    --surface-raised: #211a29;
+    --page-plane:     #100c15;
     --text-primary:   #f6f4fa;
     --text-secondary: #bcb5cc;
     --text-muted:     #8b8499;
     --gridline:       #2e2838;
     --baseline:       #3c3448;
     --border:         rgba(255,255,255,0.10);
-    --series-1:       #a78bfa;
+    --series-1:       #b298fb;
     --status-good:      #34d399;
     --status-warning:   #fbbf24;
     --status-serious:   #fb923c;
     --status-critical:  #f87171;
-    --row-hover: rgba(167,139,250,0.09);
-    --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
-    --shadow-md: 0 4px 16px rgba(0,0,0,0.35);
+    --row-hover: rgba(178,152,251,0.10);
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.35);
+    --shadow-md: 0 8px 28px rgba(0,0,0,0.4);
+    --accent-cta-bg:      #05f2a0;
+    --accent-cta-bg-hover: #35ffb8;
+    --accent-cta-text:    #05261b;
+    --pitch-1: #0e4b26;
+    --pitch-2: #12592e;
+    --pitch-line: rgba(255,255,255,0.4);
   }
 
   * { box-sizing: border-box; }
@@ -85,7 +105,9 @@
     font-feature-settings: "cv11", "ss01", "tnum";
   }
   header {
-    background: linear-gradient(135deg, var(--brand-1) 0%, var(--brand-2) 100%);
+    background:
+      radial-gradient(ellipse 900px 320px at 15% -40%, rgba(0,224,140,0.16), transparent 60%),
+      linear-gradient(135deg, var(--brand-1) 0%, var(--brand-2) 55%, var(--brand-3) 100%);
     box-shadow: var(--shadow-md);
   }
   .header-inner {
@@ -174,17 +196,18 @@
   .controls button {
     font: inherit;
     font-size: 0.875rem;
-    font-weight: 600;
+    font-weight: 700;
     height: 36px;
     padding: 0 16px;
     border: none;
     border-radius: 8px;
-    background: var(--series-1);
-    color: #ffffff;
+    background: var(--accent-cta-bg);
+    color: var(--accent-cta-text);
     cursor: pointer;
-    transition: opacity 0.12s ease;
+    transition: background-color 0.12s ease, transform 0.08s ease;
   }
-  .controls button:hover { opacity: 0.88; }
+  .controls button:hover { background: var(--accent-cta-bg-hover); }
+  .controls button:active { transform: translateY(1px); }
   .controls button.secondary {
     background: transparent;
     border: 1px solid var(--border);
@@ -222,7 +245,7 @@
   .table-wrap {
     overflow-x: auto;
     border: 1px solid var(--gridline);
-    border-radius: 12px;
+    border-radius: var(--radius-card);
     background: var(--surface-1);
     box-shadow: var(--shadow-sm);
   }
@@ -332,7 +355,7 @@
   .status-msg.error { color: var(--status-critical); }
   .lineup-card {
     border: 1px solid var(--gridline);
-    border-radius: 12px;
+    border-radius: var(--radius-card);
     background: var(--surface-1);
     box-shadow: var(--shadow-sm);
     padding: 16px;
@@ -406,6 +429,124 @@
     border-radius: 4px;
     background: var(--gridline);
     color: var(--text-secondary);
+  }
+  .pitch {
+    background: repeating-linear-gradient(180deg, var(--pitch-2) 0, var(--pitch-2) 44px, var(--pitch-1) 44px, var(--pitch-1) 88px);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-md), inset 0 0 0 2px var(--pitch-line);
+    padding: 20px 10px 14px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 380px;
+    position: relative;
+    overflow: hidden;
+  }
+  .pitch::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 100px;
+    height: 100px;
+    border: 2px solid var(--pitch-line);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+  .pitch::after {
+    content: '';
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    top: 8px;
+    bottom: 8px;
+    border: 2px solid var(--pitch-line);
+    border-radius: 6px;
+    pointer-events: none;
+  }
+  .pitch-row {
+    display: flex;
+    justify-content: space-evenly;
+    align-items: flex-start;
+    gap: 6px;
+    flex-wrap: wrap;
+    position: relative;
+    z-index: 1;
+  }
+  .pitch-player {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 70px;
+    text-align: center;
+  }
+  .pitch-shirt {
+    position: relative;
+    line-height: 0;
+    filter: drop-shadow(0 2px 3px rgba(0,0,0,0.4));
+  }
+  .pitch-captain-badge {
+    position: absolute;
+    top: -3px;
+    right: -1px;
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    background: var(--accent-cta-bg);
+    color: var(--accent-cta-text);
+    font-size: 0.62rem;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.45);
+  }
+  .pitch-vc-badge {
+    background: rgba(255,255,255,0.9);
+    color: #17121f;
+  }
+  .pitch-name {
+    margin-top: 4px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: #ffffff;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.75);
+    line-height: 1.2;
+    max-width: 100%;
+    overflow-wrap: break-word;
+  }
+  .bench-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 14px;
+    margin-top: 12px;
+    padding: 12px 10px;
+    border: 1px dashed var(--gridline);
+    border-radius: var(--radius-card);
+    background: var(--surface-1);
+  }
+  .bench-strip .pitch-name {
+    color: var(--text-secondary);
+    text-shadow: none;
+  }
+  .bench-strip-label {
+    width: 100%;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.045em;
+    color: var(--text-muted);
+    margin-bottom: 2px;
+  }
+  .pitch-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  @media (max-width: 640px) {
+    .pitch-pair { grid-template-columns: 1fr; }
   }
   .flag-chip {
     display: inline-block;
@@ -614,6 +755,11 @@
     </div>
     <div id="my-team-status" class="status-msg" style="display:none"></div>
     <div id="my-team-summary" class="subtitle"></div>
+    <div id="my-team-pitch-wrap" style="display:none;margin-bottom:24px;">
+      <div id="my-team-formation" class="muted" style="font-size:0.82rem;font-weight:700;margin-bottom:8px;"></div>
+      <div id="my-team-pitch"></div>
+      <div id="my-team-bench"></div>
+    </div>
 
     <div id="captaincy-section" style="display:none">
       <h3 class="section-heading" style="font-size:0.95rem;margin-top:24px;">Captaincy suggestion</h3>
@@ -1033,6 +1179,150 @@
   function positionName(id) {
     const p = state.positionsById.get(id);
     return p ? p.singular_name_short : '—';
+  }
+
+  // ---- Team kits & pitch view ----
+
+  // Real, traditional home-shirt colours for each club — factual club branding info, not exact
+  // licensed kit art. "pattern" is a simplification: 'solid' (body colour + trim) or 'stripes'
+  // (equal vertical bars of primary/secondary) — enough to be recognisable at pitch-icon size.
+  const TEAM_KITS = {
+    ARS: { primary: '#EF0107', secondary: '#FFFFFF', pattern: 'solid' },
+    AVL: { primary: '#670E36', secondary: '#95BFE5', pattern: 'solid' },
+    BOU: { primary: '#DA291C', secondary: '#000000', pattern: 'stripes' },
+    BRE: { primary: '#E30613', secondary: '#FFFFFF', pattern: 'stripes' },
+    BHA: { primary: '#0057B8', secondary: '#FFFFFF', pattern: 'stripes' },
+    CHE: { primary: '#034694', secondary: '#FFFFFF', pattern: 'solid' },
+    COV: { primary: '#78C0E0', secondary: '#00285E', pattern: 'solid' },
+    CRY: { primary: '#C4122E', secondary: '#1B458F', pattern: 'stripes' },
+    EVE: { primary: '#003399', secondary: '#FFFFFF', pattern: 'solid' },
+    FUL: { primary: '#FFFFFF', secondary: '#000000', pattern: 'solid' },
+    HUL: { primary: '#F18A00', secondary: '#000000', pattern: 'stripes' },
+    IPS: { primary: '#0044A9', secondary: '#FFFFFF', pattern: 'solid' },
+    LEE: { primary: '#FFFFFF', secondary: '#1D428A', pattern: 'solid' },
+    LIV: { primary: '#C8102E', secondary: '#FFFFFF', pattern: 'solid' },
+    MCI: { primary: '#6CABDD', secondary: '#FFFFFF', pattern: 'solid' },
+    MUN: { primary: '#DA291C', secondary: '#FFE500', pattern: 'solid' },
+    NEW: { primary: '#241F20', secondary: '#FFFFFF', pattern: 'stripes' },
+    NFO: { primary: '#DD0000', secondary: '#FFFFFF', pattern: 'solid' },
+    TOT: { primary: '#FFFFFF', secondary: '#132257', pattern: 'solid' },
+    SUN: { primary: '#EB172B', secondary: '#FFFFFF', pattern: 'stripes' },
+  };
+  const DEFAULT_KIT = { primary: '#6b7280', secondary: '#e5e7eb', pattern: 'solid' };
+
+  // FotMob's team names don't always match FPL's short names (e.g. "Manchester United" vs "Man
+  // Utd") — these aliases catch the common variants; anything still unmatched falls back to a
+  // neutral grey kit rather than breaking.
+  const TEAM_NAME_ALIASES = {
+    ARS: ['arsenal'],
+    AVL: ['aston villa', 'villa'],
+    BOU: ['bournemouth', 'afc bournemouth'],
+    BRE: ['brentford'],
+    BHA: ['brighton', 'brighton hove albion'],
+    CHE: ['chelsea'],
+    COV: ['coventry', 'coventry city'],
+    CRY: ['crystal palace', 'palace'],
+    EVE: ['everton'],
+    FUL: ['fulham'],
+    HUL: ['hull', 'hull city'],
+    IPS: ['ipswich', 'ipswich town'],
+    LEE: ['leeds', 'leeds united'],
+    LIV: ['liverpool'],
+    MCI: ['man city', 'manchester city'],
+    MUN: ['man utd', 'man united', 'manchester united'],
+    NEW: ['newcastle', 'newcastle united'],
+    NFO: ['nottm forest', 'nottingham forest', 'forest'],
+    TOT: ['spurs', 'tottenham', 'tottenham hotspur'],
+    SUN: ['sunderland'],
+  };
+
+  function normalizeTeamName(name) {
+    return (name || '').toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
+  }
+
+  function resolveTeamShortName(name) {
+    if (!name) return null;
+    const bootstrapTeam = state.bootstrap?.teams?.find(t => t.name === name || t.short_name === name);
+    if (bootstrapTeam) return bootstrapTeam.short_name;
+
+    const normalized = normalizeTeamName(name);
+    for (const [shortName, aliases] of Object.entries(TEAM_NAME_ALIASES)) {
+      if (aliases.some(a => a === normalized || normalized.includes(a) || a.includes(normalized))) {
+        return shortName;
+      }
+    }
+    return null;
+  }
+
+  function kitFor(teamNameOrShortName) {
+    const shortName = resolveTeamShortName(teamNameOrShortName);
+    return (shortName && TEAM_KITS[shortName]) || DEFAULT_KIT;
+  }
+
+  let shirtPatternCounter = 0;
+
+  function shirtSvg(kit) {
+    const bodyPath = 'M16,3 Q19,3 21,4 L28,8 L31,13 L24,12 L24,29 L8,29 L8,12 L1,13 L4,8 L11,4 Q13,3 16,3 Z';
+    let fill = kit.primary;
+    let defs = '';
+    if (kit.pattern === 'stripes') {
+      const id = `shirt-stripes-${shirtPatternCounter++}`;
+      defs = `<defs><pattern id="${id}" width="6" height="32" patternUnits="userSpaceOnUse">
+        <rect width="6" height="32" fill="${kit.primary}"/>
+        <rect width="3" height="32" fill="${kit.secondary}"/>
+      </pattern></defs>`;
+      fill = `url(#${id})`;
+    }
+    const trim = kit.pattern === 'solid'
+      ? `<circle cx="16" cy="4" r="1.4" fill="${kit.secondary}"/>
+         <circle cx="2.5" cy="10.5" r="1.6" fill="${kit.secondary}"/>
+         <circle cx="29.5" cy="10.5" r="1.6" fill="${kit.secondary}"/>`
+      : '';
+    return `<svg viewBox="0 0 32 32" width="34" height="34" aria-hidden="true">
+      ${defs}
+      <path d="${bodyPath}" fill="${fill}" stroke="rgba(0,0,0,0.4)" stroke-width="1" stroke-linejoin="round"/>
+      ${trim}
+    </svg>`;
+  }
+
+  // player: { name, team (short name or full name), isCaptain, isViceCaptain }
+  function pitchPlayerHtml(player) {
+    const badge = player.isCaptain
+      ? '<span class="pitch-captain-badge">C</span>'
+      : (player.isViceCaptain ? '<span class="pitch-captain-badge pitch-vc-badge">V</span>' : '');
+    return `
+      <div class="pitch-player">
+        <div class="pitch-shirt">${shirtSvg(kitFor(player.team))}${badge}</div>
+        <div class="pitch-name">${escapeHtml(player.name)}</div>
+      </div>
+    `;
+  }
+
+  // playersByPosition: { GK: Player[], DEF: Player[], MID: Player[], FWD: Player[] }
+  function renderPitch(playersByPosition) {
+    const rowHtml = pos => {
+      const players = playersByPosition[pos] || [];
+      if (!players.length) return '';
+      return `<div class="pitch-row">${players.map(pitchPlayerHtml).join('')}</div>`;
+    };
+    return `
+      <div class="pitch">
+        ${rowHtml('FWD')}
+        ${rowHtml('MID')}
+        ${rowHtml('DEF')}
+        ${rowHtml('GK')}
+      </div>
+    `;
+  }
+
+  function renderBenchStrip(players) {
+    if (!players.length) return '';
+    return `
+      <div class="bench-strip">
+        <div class="bench-strip-label">Bench</div>
+        ${players.map(pitchPlayerHtml).join('')}
+      </div>
+    `;
   }
 
   // ---- Players ----
@@ -1555,6 +1845,32 @@
     `).join('');
   }
 
+  const POSITION_LABEL_BY_ELEMENT_TYPE = { 1: 'GK', 2: 'DEF', 3: 'MID', 4: 'FWD' };
+
+  function renderMyTeamPitch(picks) {
+    const wrap = document.getElementById('my-team-pitch-wrap');
+    if (!picks.length) {
+      wrap.style.display = 'none';
+      return;
+    }
+
+    const toPitchPlayer = p => ({ name: p.webName, team: p.teamName, isCaptain: p.isCaptain, isViceCaptain: p.isViceCaptain });
+    const startersByPos = { GK: [], DEF: [], MID: [], FWD: [] };
+    const bench = [];
+    for (const p of picks) {
+      const pos = POSITION_LABEL_BY_ELEMENT_TYPE[p.elementType];
+      if (!pos) continue;
+      if (p.isBenched) bench.push(toPitchPlayer(p));
+      else startersByPos[pos].push(toPitchPlayer(p));
+    }
+
+    const formation = `${startersByPos.DEF.length}-${startersByPos.MID.length}-${startersByPos.FWD.length}`;
+    document.getElementById('my-team-formation').textContent = `Formation: ${formation}`;
+    document.getElementById('my-team-pitch').innerHTML = renderPitch(startersByPos);
+    document.getElementById('my-team-bench').innerHTML = renderBenchStrip(bench);
+    wrap.style.display = '';
+  }
+
   function renderCaptaincy(suggestions) {
     const section = document.getElementById('captaincy-section');
     const container = document.getElementById('captaincy-list');
@@ -2030,6 +2346,7 @@
     statusEl.style.display = 'none';
     summaryEl.textContent = '';
     tableWrap.style.display = 'none';
+    document.getElementById('my-team-pitch-wrap').style.display = 'none';
     captaincySection.style.display = 'none';
     chipStrategySection.style.display = 'none';
     transferSuggestionsSection.style.display = 'none';
@@ -2072,6 +2389,7 @@
       summaryEl.textContent = `${data.teamName} (${data.managerName}) — ${data.points} pts this GW `
         + `· Bank: £${data.bank.toFixed(1)}m · Squad value: £${data.value.toFixed(1)}m`;
       setSquadBuilderBudget(data.bank + data.value);
+      renderMyTeamPitch(data.picks);
       renderMyTeamRows(data.picks);
       tableWrap.style.display = '';
       renderChipStrategy(data.picks);
@@ -2406,6 +2724,7 @@
       + `&middot; Bank: £${(bankTenths / 10).toFixed(1)}m &middot; Squad value: £${(value / 10).toFixed(1)}m`
       + `<span class="demo-badge">Demo data</span>`;
     setSquadBuilderBudget((bankTenths + value) / 10);
+    renderMyTeamPitch(picks);
     renderMyTeamRows(picks);
     tableWrap.style.display = '';
     renderChipStrategy(picks);
@@ -2594,17 +2913,14 @@
 
   function renderLineupTeam(team) {
     if (!team) return '<p class="muted">No data yet.</p>';
-    const groups = ['GK', 'DEF', 'MID', 'FWD'].map(pos => {
-      const players = team.starters.filter(p => p.position === pos);
-      if (!players.length) return '';
-      const items = players.map(p =>
-        `<li>${p.shirtNumber ? escapeHtml(p.shirtNumber) + ' &middot; ' : ''}${escapeHtml(p.name)}${p.isCaptain ? ' (C)' : ''}</li>`
-      ).join('');
-      return `<div class="lineup-position-group">
-        <div class="lineup-position-label">${pos}</div>
-        <ul class="lineup-player-list">${items}</ul>
-      </div>`;
-    }).join('');
+
+    const startersByPos = { GK: [], DEF: [], MID: [], FWD: [] };
+    for (const p of team.starters) {
+      if (startersByPos[p.position]) {
+        startersByPos[p.position].push({ name: p.name, team: team.name, isCaptain: p.isCaptain });
+      }
+    }
+
     const subs = team.subs.length
       ? `<div class="lineup-subs"><strong>Subs:</strong> ${team.subs.map(p => escapeHtml(p.name)).join(', ')}</div>`
       : '';
@@ -2614,7 +2930,13 @@
         ).join(', ')}</div>`
       : '';
     const formation = team.formation ? ` <span class="muted">(${escapeHtml(team.formation)})</span>` : '';
-    return `<h3>${escapeHtml(team.name)}${formation}</h3>${groups}${subs}${unavailable}`;
+
+    return `
+      <h3>${escapeHtml(team.name)}${formation}</h3>
+      ${renderPitch(startersByPos)}
+      ${subs}
+      ${unavailable}
+    `;
   }
 
   function renderLineupCard(lineup, fixture) {
