@@ -7,30 +7,30 @@
 <style>
   :root {
     color-scheme: light;
-    --brand-1:        #1f0025;
-    --brand-2:        #3c0a52;
-    --brand-3:        #6d1b8f;
-    --brand-accent:   #00e08c;
-    --accent-cta-bg:      #00e08c;
-    --accent-cta-bg-hover: #05f2a0;
-    --accent-cta-text:    #062e21;
+    --brand-1:        #37003c;
+    --brand-2:        #4a0050;
+    --brand-3:        #650a6e;
+    --brand-accent:   #00ff85;
+    --accent-cta-bg:      #00ff85;
+    --accent-cta-bg-hover: #33ffa0;
+    --accent-cta-text:    #04150c;
     --surface-1:      #ffffff;
     --surface-raised: #ffffff;
-    --page-plane:     #f6f5fa;
-    --text-primary:   #17121f;
-    --text-secondary: #5c5670;
-    --text-muted:     #918c9e;
-    --gridline:       #e7e4f0;
-    --baseline:       #d3cee0;
-    --border:         rgba(23,18,31,0.12);
-    --series-1:       #7c3aed;
+    --page-plane:     #f7f4f8;
+    --text-primary:   #170019;
+    --text-secondary: #5c4f63;
+    --text-muted:     #948a9b;
+    --gridline:       #ece5ee;
+    --baseline:       #d9cddc;
+    --border:         rgba(23,0,25,0.12);
+    --series-1:       #0891b2;
     --status-good:      #16a34a;
     --status-warning:   #f59e0b;
     --status-serious:   #f97316;
     --status-critical:  #dc2626;
-    --row-hover: rgba(124,58,237,0.05);
-    --shadow-sm: 0 1px 2px rgba(23,18,31,0.06);
-    --shadow-md: 0 8px 24px rgba(23,18,31,0.08);
+    --row-hover: rgba(4,199,209,0.06);
+    --shadow-sm: 0 1px 2px rgba(23,0,25,0.06);
+    --shadow-md: 0 8px 24px rgba(23,0,25,0.08);
     --radius-card: 14px;
     --pitch-1: #1a7a3e;
     --pitch-2: #1f8a46;
@@ -39,26 +39,26 @@
   @media (prefers-color-scheme: dark) {
     :root:where(:not([data-theme="light"])) {
       color-scheme: dark;
-      --surface-1:      #19141f;
-      --surface-raised: #211a29;
-      --page-plane:     #100c15;
-      --text-primary:   #f6f4fa;
-      --text-secondary: #bcb5cc;
-      --text-muted:     #8b8499;
-      --gridline:       #2e2838;
-      --baseline:       #3c3448;
+      --surface-1:      #1b0d1e;
+      --surface-raised: #24122a;
+      --page-plane:     #120714;
+      --text-primary:   #f7f2f8;
+      --text-secondary: #c3b4c8;
+      --text-muted:     #8f8296;
+      --gridline:       #33203a;
+      --baseline:       #45283f;
       --border:         rgba(255,255,255,0.10);
-      --series-1:       #b298fb;
+      --series-1:       #22e1ee;
       --status-good:      #34d399;
       --status-warning:   #fbbf24;
       --status-serious:   #fb923c;
       --status-critical:  #f87171;
-      --row-hover: rgba(178,152,251,0.10);
+      --row-hover: rgba(34,225,238,0.10);
       --shadow-sm: 0 1px 2px rgba(0,0,0,0.35);
       --shadow-md: 0 8px 28px rgba(0,0,0,0.4);
-      --accent-cta-bg:      #05f2a0;
-      --accent-cta-bg-hover: #35ffb8;
-      --accent-cta-text:    #05261b;
+      --accent-cta-bg:      #00ff85;
+      --accent-cta-bg-hover: #45ffa8;
+      --accent-cta-text:    #04150c;
       --pitch-1: #0e4b26;
       --pitch-2: #12592e;
       --pitch-line: rgba(255,255,255,0.4);
@@ -66,26 +66,26 @@
   }
   :root[data-theme="dark"] {
     color-scheme: dark;
-    --surface-1:      #19141f;
-    --surface-raised: #211a29;
-    --page-plane:     #100c15;
-    --text-primary:   #f6f4fa;
-    --text-secondary: #bcb5cc;
-    --text-muted:     #8b8499;
-    --gridline:       #2e2838;
-    --baseline:       #3c3448;
+    --surface-1:      #1b0d1e;
+    --surface-raised: #24122a;
+    --page-plane:     #120714;
+    --text-primary:   #f7f2f8;
+    --text-secondary: #c3b4c8;
+    --text-muted:     #8f8296;
+    --gridline:       #33203a;
+    --baseline:       #45283f;
     --border:         rgba(255,255,255,0.10);
-    --series-1:       #b298fb;
+    --series-1:       #22e1ee;
     --status-good:      #34d399;
     --status-warning:   #fbbf24;
     --status-serious:   #fb923c;
     --status-critical:  #f87171;
-    --row-hover: rgba(178,152,251,0.10);
+    --row-hover: rgba(34,225,238,0.10);
     --shadow-sm: 0 1px 2px rgba(0,0,0,0.35);
     --shadow-md: 0 8px 28px rgba(0,0,0,0.4);
-    --accent-cta-bg:      #05f2a0;
-    --accent-cta-bg-hover: #35ffb8;
-    --accent-cta-text:    #05261b;
+    --accent-cta-bg:      #00ff85;
+    --accent-cta-bg-hover: #45ffa8;
+    --accent-cta-text:    #04150c;
     --pitch-1: #0e4b26;
     --pitch-2: #12592e;
     --pitch-line: rgba(255,255,255,0.4);
@@ -106,7 +106,7 @@
   }
   header {
     background:
-      radial-gradient(ellipse 900px 320px at 15% -40%, rgba(0,224,140,0.16), transparent 60%),
+      radial-gradient(ellipse 900px 320px at 15% -40%, rgba(0,255,133,0.16), transparent 60%),
       linear-gradient(135deg, var(--brand-1) 0%, var(--brand-2) 55%, var(--brand-3) 100%);
     box-shadow: var(--shadow-md);
   }
@@ -190,7 +190,7 @@
   .controls button:focus-visible {
     outline: none;
     border-color: var(--series-1);
-    box-shadow: 0 0 0 3px rgba(124,58,237,0.18);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--series-1) 18%, transparent);
   }
   .controls input { min-width: 200px; }
   .controls button {
@@ -505,7 +505,7 @@
   }
   .pitch-vc-badge {
     background: rgba(255,255,255,0.9);
-    color: #17121f;
+    color: #170019;
   }
   .pitch-name {
     margin-top: 4px;
