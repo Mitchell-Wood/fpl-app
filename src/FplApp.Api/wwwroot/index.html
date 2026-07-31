@@ -36,6 +36,8 @@
     --pitch-2: #1f8a46;
     --pitch-line: rgba(255,255,255,0.55);
   }
+  /* Dark theme values are duplicated below in :root[data-theme="dark"] because CSS can't share a
+     declaration block between an @media query and a plain selector. Keep both blocks in sync. */
   @media (prefers-color-scheme: dark) {
     :root:where(:not([data-theme="light"])) {
       color-scheme: dark;
@@ -64,6 +66,8 @@
       --pitch-line: rgba(255,255,255,0.4);
     }
   }
+  /* Manual dark-theme override (data-theme="dark") — keep in sync with the prefers-color-scheme
+     block above; same values, duplicated because CSS can't share a block across selector types. */
   :root[data-theme="dark"] {
     color-scheme: dark;
     --surface-1:      #1b0d1e;
@@ -2546,9 +2550,6 @@
       .slice(0, 5);
   }
 
-  // Mirrors PlayerRecommendationService's scoring (form weighted heavily, plus points-per-cost,
-  // scaled by upcoming fixture ease) so demo candidate ranking reacts to the gameweek lookahead
-  // the same way the real /api/transfer-suggestions endpoint does.
   // Mirrors PlayerRecommendationService.Score: form and FPL's own next-gameweek expected-points
   // estimate (ep_next) as the two leading signals, points-per-cost as a smaller tiebreaker, scaled
   // by upcoming fixture ease over the chosen lookahead window.
@@ -2564,10 +2565,6 @@
     return baseScore * fixtureFactor;
   }
 
-  // Considers every squad player (not just the ones with a flag) and only suggests a swap where
-  // the best affordable candidate genuinely outscores the current player — mirrors
-  // TransferPlannerService.ComputeCandidateSuggestions. Returns the full points-gain-ranked list
-  // (not capped), shared by the displayed suggestions list and the transfer-plan builder below.
   // Ranks every squad player's best affordable replacement by projected points gain, best first —
   // including negative-gain entries (a player already better than anything affordable in their
   // price bracket), so the displayed list can always show at least 5 ideas. Mirrors
