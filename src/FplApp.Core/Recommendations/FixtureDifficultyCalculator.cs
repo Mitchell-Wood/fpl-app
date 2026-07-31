@@ -27,6 +27,20 @@ public static class FixtureDifficultyCalculator
         }
 
         var lastEvent = nextEvent + lookaheadWeeks - 1;
+        return BuildRawDifficulties(fixtures.Where(f => f.Event is { } eventId && eventId >= nextEvent && eventId <= lastEvent));
+    }
+
+    /// <summary>
+    /// Each team's per-fixture difficulty for one specific gameweek — like
+    /// <see cref="RawUpcomingDifficultiesByTeam"/> but for a single chosen event (e.g. a candidate
+    /// Bench Boost week) rather than a lookahead window from the next unplayed gameweek. A team
+    /// with no fixture that week is simply absent; a double gameweek yields both fixtures.
+    /// </summary>
+    public static Dictionary<int, List<int>> RawDifficultiesForEvent(IReadOnlyList<Fixture> fixtures, int eventId)
+        => BuildRawDifficulties(fixtures.Where(f => f.Event == eventId));
+
+    private static Dictionary<int, List<int>> BuildRawDifficulties(IEnumerable<Fixture> fixtures)
+    {
         var difficultiesByTeam = new Dictionary<int, List<int>>();
 
         void AddDifficulty(int teamId, int difficulty)
@@ -41,11 +55,6 @@ public static class FixtureDifficultyCalculator
 
         foreach (var fixture in fixtures)
         {
-            if (fixture.Event is not { } eventId || eventId < nextEvent || eventId > lastEvent)
-            {
-                continue;
-            }
-
             AddDifficulty(fixture.TeamH, fixture.TeamHDifficulty);
             AddDifficulty(fixture.TeamA, fixture.TeamADifficulty);
         }

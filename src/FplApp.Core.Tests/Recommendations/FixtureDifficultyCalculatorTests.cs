@@ -107,4 +107,44 @@ public class FixtureDifficultyCalculatorTests
 
         Assert.Equal(4.0, result[1]);
     }
+
+    [Fact]
+    public void RawDifficultiesForEvent_OnlyIncludesTheChosenEvent_RegardlessOfFinishedOrOrder()
+    {
+        var fixtures = new List<Fixture>
+        {
+            Fx(1, teamH: 1, teamHDifficulty: 5, teamA: 9, teamADifficulty: 5, finished: true), // different (past) event
+            Fx(3, teamH: 1, teamHDifficulty: 4, teamA: 9, teamADifficulty: 4), // different (future) event
+            Fx(2, teamH: 1, teamHDifficulty: 2, teamA: 2, teamADifficulty: 3), // the chosen event
+        };
+
+        var result = FixtureDifficultyCalculator.RawDifficultiesForEvent(fixtures, eventId: 2);
+
+        Assert.Equal([2], result[1]);
+        Assert.Equal([3], result[2]);
+    }
+
+    [Fact]
+    public void RawDifficultiesForEvent_TeamWithNoFixtureThatWeek_IsAbsent()
+    {
+        var fixtures = new List<Fixture> { Fx(2, teamH: 1, teamHDifficulty: 3, teamA: 2, teamADifficulty: 3) };
+
+        var result = FixtureDifficultyCalculator.RawDifficultiesForEvent(fixtures, eventId: 2);
+
+        Assert.False(result.ContainsKey(9));
+    }
+
+    [Fact]
+    public void RawDifficultiesForEvent_DoubleGameweek_CountsBothFixtures()
+    {
+        var fixtures = new List<Fixture>
+        {
+            Fx(2, teamH: 1, teamHDifficulty: 2, teamA: 5, teamADifficulty: 3),
+            Fx(2, teamH: 6, teamHDifficulty: 4, teamA: 1, teamADifficulty: 4),
+        };
+
+        var result = FixtureDifficultyCalculator.RawDifficultiesForEvent(fixtures, eventId: 2);
+
+        Assert.Equal([2, 4], result[1]);
+    }
 }

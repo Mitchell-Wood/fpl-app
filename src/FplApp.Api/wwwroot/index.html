@@ -623,6 +623,27 @@
     <div id="chip-strategy-section" style="display:none">
       <h3 class="section-heading" style="font-size:0.95rem;margin-top:24px;">Chip strategy</h3>
       <div id="chip-strategy-content" style="font-size:0.9rem;line-height:1.6;"></div>
+
+      <div style="margin-top:14px;">
+        <div style="font-weight:700;font-size:0.9rem;margin-bottom:6px;">Bench Boost planner</div>
+        <p class="muted" style="font-size:0.82rem;margin:0 0 8px;">
+          Bench Boost counts your whole 15, so a bench upgrade that's not worth a transfer most
+          weeks can be worth it just for this one. Pick a target gameweek and this suggests
+          transfers to maximize your full squad's points that week specifically — not the usual
+          multi-week average.
+        </p>
+        <div class="controls" style="margin-top:0;">
+          <label class="inline-label" for="bb-target-gameweek">Target gameweek
+            <select id="bb-target-gameweek" style="width:auto;"></select>
+          </label>
+          <label class="inline-label" for="bb-free-transfers">Free transfers available
+            <input id="bb-free-transfers" type="number" min="0" max="5" value="1">
+          </label>
+          <button id="bb-plan-build" type="button">Plan Bench Boost</button>
+        </div>
+        <div id="bb-plan-status" class="status-msg" style="display:none"></div>
+        <div id="bb-plan-content"></div>
+      </div>
     </div>
 
     <div id="transfer-suggestions-section" style="display:none">
@@ -1253,7 +1274,7 @@
       const blankTeams = [...countByTeam.entries()].filter(([, c]) => c === 0).map(([id]) => teamName(id));
       const doubleTeams = [...countByTeam.entries()].filter(([, c]) => c >= 2).map(([id]) => teamName(id));
       if (blankTeams.length || doubleTeams.length) {
-        results.push({ eventName: event.name, blankTeams, doubleTeams });
+        results.push({ eventId: event.id, eventName: event.name, blankTeams, doubleTeams });
       }
     }
     return results;
@@ -1569,7 +1590,7 @@
     const blankDoubleRows = computeBlankDoubleGameweeks();
 
     const bbCandidates = blankDoubleRows
-      .map(r => ({ eventName: r.eventName, teams: r.doubleTeams.filter(t => ownedTeams.has(t)) }))
+      .map(r => ({ eventId: r.eventId, eventName: r.eventName, teams: r.doubleTeams.filter(t => ownedTeams.has(t)) }))
       .filter(r => r.teams.length > 0)
       .sort((a, b) => b.teams.length - a.teams.length)
       .slice(0, 3);
@@ -1638,6 +1659,111 @@
       </p>
     `;
     section.style.display = '';
+    populateBenchBoostGameweekSelect(strategy.bbCandidates);
+  }
+
+  function populateBenchBoostGameweekSelect(bbCandidates) {
+    const select = document.getElementById('bb-target-gameweek');
+    const events = state.bootstrap.events.filter(e => !e.finished);
+    select.innerHTML = '';
+    for (const e of events) {
+      const opt = document.createElement('option');
+      opt.value = e.id;
+      opt.textContent = e.name + (e.is_next ? ' (next)' : e.is_current ? ' (current)' : '');
+      select.appendChild(opt);
+    }
+    const bestCandidateEventId = bbCandidates[0]?.eventId;
+    if (bestCandidateEventId != null && events.some(e => e.id === bestCandidateEventId)) {
+      select.value = bestCandidateEventId;
+    } else {
+      const defaultEvent = events.find(e => e.is_next || e.is_current) || events[0];
+      if (defaultEvent) select.value = defaultEvent.id;
+    }
+  }
+
+  async function buildBenchBoostPlan() {
+    const statusEl = document.getElementById('bb-plan-status');
+    const container = document.getElementById('bb-plan-content');
+    container.innerHTML = '';
+    statusEl.classList.remove('error');
+    statusEl.style.display = '';
+
+    if (state.myTeam?.mode !== 'real') {
+      statusEl.textContent = 'Bench Boost planning needs a real loaded team (not demo data), since it fetches your live squad and bank.';
+      statusEl.classList.add('error');
+      return;
+    }
+
+    const { teamId, eventId } = state.myTeam;
+    const targetEventId = document.getElementById('bb-target-gameweek').value;
+    const freeTransfers = document.getElementById('bb-free-transfers').value || 1;
+
+    statusEl.textContent = 'Planning Bench Boost…';
+
+    try {
+      const res = await fetch(`/api/bench-boost-plan?teamId=${encodeURIComponent(teamId)}&eventId=${encodeURIComponent(eventId)}&targetEventId=${encodeURIComponent(targetEventId)}&freeTransfers=${encodeURIComponent(freeTransfers)}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || `bench-boost-plan ${res.status}`);
+      if (!data.available) {
+        statusEl.textContent = "Picks for your loaded gameweek aren't public yet, so a Bench Boost plan can't be built.";
+        statusEl.classList.add('error');
+        return;
+      }
+      statusEl.style.display = 'none';
+      renderBenchBoostPlan(data.plan);
+    } catch (err) {
+      statusEl.textContent = 'Could not build a Bench Boost plan: ' + err.message;
+      statusEl.classList.add('error');
+    }
+  }
+
+  function benchBoostSuggestionHtml(s) {
+    const best = s.candidates[0];
+    const inHtml = best
+      ? `<strong>${escapeHtml(best.webName)}</strong> <span class="muted">(${escapeHtml(best.teamName)})</span> &middot; £${(best.nowCost / 10).toFixed(1)}m`
+      : `<span class="muted">No affordable alternative found.</span>`;
+    return `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;flex-wrap:wrap;gap:4px;">
+        <span><strong>${escapeHtml(s.outWebName)}</strong> <span class="muted">(${escapeHtml(s.outTeamName)})</span> &rarr; ${inHtml}</span>
+        <span class="num" style="color:${s.expectedPointsGain >= 0 ? 'var(--status-good)' : 'var(--status-critical)'}">${s.expectedPointsGain >= 0 ? '+' : ''}${s.expectedPointsGain.toFixed(1)} pts</span>
+      </div>
+    `;
+  }
+
+  function renderBenchBoostPlan(planData) {
+    const container = document.getElementById('bb-plan-content');
+    const { currentSquadProjectedPoints, projectedSquadPointsAfterTransfers, plan } = planData;
+
+    const gainNote = plan.recommendedTransfers.length
+      ? ` &rarr; after transfers: <strong style="color:var(--status-good)">${projectedSquadPointsAfterTransfers.toFixed(1)} pts</strong>`
+      : '';
+
+    const transfersHtml = plan.recommendedTransfers.length
+      ? `<div style="margin-top:10px;">
+          <div class="muted" style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.045em;margin-bottom:2px;">Recommended transfers</div>
+          ${plan.recommendedTransfers.map(benchBoostSuggestionHtml).join('')}
+        </div>`
+      : `<div class="muted" style="margin-top:10px;font-size:0.85rem;">No transfer currently improves your squad's total for this gameweek — it's already the strongest affordable setup.</div>`;
+
+    const hitHtml = plan.hitCandidate
+      ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--gridline);">
+          <div class="muted" style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.045em;margin-bottom:2px;">Next best, beyond your free transfers</div>
+          ${benchBoostSuggestionHtml(plan.hitCandidate)}
+          <div class="muted" style="font-size:0.82rem;margin-top:2px;">
+            After a &minus;4 hit, nets <strong style="color:${plan.hitWorthIt ? 'var(--status-good)' : 'var(--status-critical)'}">${plan.hitCandidateNetGain >= 0 ? '+' : ''}${plan.hitCandidateNetGain.toFixed(1)} pts</strong>
+            — ${plan.hitWorthIt ? 'worth it just for this gameweek.' : 'not worth it just for this gameweek.'}
+          </div>
+        </div>`
+      : '';
+
+    container.innerHTML = `
+      <div class="lineup-card">
+        <div style="font-weight:700;margin-bottom:6px;">Full-squad projected points, this gameweek</div>
+        <div>As-is: <strong>${currentSquadProjectedPoints.toFixed(1)} pts</strong>${gainNote}</div>
+        ${transfersHtml}
+        ${hitHtml}
+      </div>
+    `;
   }
 
   function renderTransferSuggestions(suggestions, plan) {
@@ -2596,6 +2722,7 @@
   document.getElementById('my-team-load').addEventListener('click', loadMyTeam);
   document.getElementById('my-team-demo').addEventListener('click', loadDemoMyTeam);
   document.getElementById('squad-builder-build').addEventListener('click', buildSquad);
+  document.getElementById('bb-plan-build').addEventListener('click', buildBenchBoostPlan);
   document.querySelectorAll('input[name="squad-builder-chip"]').forEach(radio => radio.addEventListener('change', () => {
     document.getElementById('squad-builder-weeks-label').style.display = document.getElementById('squad-builder-chip-wildcard').checked ? '' : 'none';
   }));
