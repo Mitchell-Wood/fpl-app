@@ -15,4 +15,10 @@ public class BenchBoostPlanResult
     public double ProjectedSquadPointsAfterTransfers { get; set; }
 
     public TransferPlanResult Plan { get; set; } = new();
+
+    /// <summary>
+    /// The resulting 15 once <see cref="Plan"/>'s recommended transfers are applied — every player
+    /// marked as starting, since Bench Boost counts the whole squad, not just the usual XI.
+    /// </summary>
+    public List<SquadBuilderPlayer> ProjectedSquad { get; set; } = [];
 }

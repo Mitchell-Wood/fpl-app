@@ -112,13 +112,60 @@ public class BenchBoostPlannerService
         plan.FreeTransfersToBank = freeTransfersAvailable - plan.FreeTransfersUsed;
         plan.TotalExpectedPointsGain = Math.Round(plan.TotalExpectedPointsGain, 2);
 
+        var projectedSquad = BuildProjectedSquad(squad, plan, playersById, teamsById, eventDifficultyByTeam);
+
         return new BenchBoostPlanResult
         {
             EventId = eventId,
             CurrentSquadProjectedPoints = Math.Round(currentSquadPoints, 2),
             ProjectedSquadPointsAfterTransfers = Math.Round(currentSquadPoints + plan.TotalExpectedPointsGain, 2),
             Plan = plan,
+            ProjectedSquad = projectedSquad,
         };
+    }
+
+    /// <summary>
+    /// The resulting 15 once <paramref name="plan"/>'s recommended transfers are applied — every
+    /// player flagged as "starting" since Bench Boost counts the whole squad, with the single
+    /// highest projected scorer marked captain.
+    /// </summary>
+    private static List<SquadBuilderPlayer> BuildProjectedSquad(
+        IReadOnlyList<SquadPickAnalysis> squad,
+        TransferPlanResult plan,
+        IReadOnlyDictionary<int, Player> playersById,
+        IReadOnlyDictionary<int, Team> teamsById,
+        IReadOnlyDictionary<int, List<int>> eventDifficultyByTeam)
+    {
+        var replacementByOutId = plan.RecommendedTransfers.ToDictionary(t => t.OutPlayerId, t => t.Candidates[0]);
+
+        var result = new List<SquadBuilderPlayer>();
+        foreach (var pick in squad)
+        {
+            var playerId = replacementByOutId.TryGetValue(pick.PlayerId, out var replacement) ? replacement.PlayerId : pick.PlayerId;
+            if (!playersById.TryGetValue(playerId, out var player))
+            {
+                continue;
+            }
+
+            result.Add(new SquadBuilderPlayer
+            {
+                PlayerId = player.Id,
+                WebName = player.WebName,
+                TeamName = teamsById.GetValueOrDefault(player.Team)?.ShortName ?? "?",
+                ElementType = player.ElementType,
+                NowCost = player.NowCost,
+                ProjectedPoints = Math.Round(PlayerProjection.EstimateProjectedPoints(player, eventDifficultyByTeam), 2),
+                IsStarting = true,
+            });
+        }
+
+        var captain = result.OrderByDescending(p => p.ProjectedPoints).FirstOrDefault();
+        if (captain is not null)
+        {
+            captain.IsCaptain = true;
+        }
+
+        return result;
     }
 
     private static TransferSuggestion MapSuggestion(CandidateSuggestion s, IReadOnlyDictionary<int, Team> teamsById)

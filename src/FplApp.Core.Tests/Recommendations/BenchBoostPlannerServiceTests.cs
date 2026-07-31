@@ -85,6 +85,32 @@ public class BenchBoostPlannerServiceTests
     }
 
     [Fact]
+    public void PlanBenchBoost_ProjectedSquad_ReflectsRecommendedSwaps_AndCaptainsTheTopScorer()
+    {
+        var swappedOut = MakePlayer(101, team: 1, elementType: 2, nowCost: 50, form: "1.0");
+        var swappedIn = MakePlayer(201, team: 1, elementType: 2, nowCost: 50, form: "9.0"); // gain +8.0, becomes top scorer
+        var untouched = MakePlayer(102, team: 1, elementType: 3, nowCost: 50, form: "3.0"); // no better affordable candidate exists
+
+        var bootstrap = MakeBootstrap(swappedOut, swappedIn, untouched);
+        var fixtures = new List<Fixture> { new() { Event = TargetEvent, TeamH = 1, TeamHDifficulty = 3, TeamA = 9, TeamADifficulty = 3 } };
+        var squad = new List<SquadPickAnalysis> { MakeSquadPick(swappedOut), MakeSquadPick(untouched) };
+
+        var result = new BenchBoostPlannerService().PlanBenchBoost(bootstrap, fixtures, squad, bank: 0, TargetEvent, freeTransfersAvailable: 1);
+
+        Assert.Equal(2, result.ProjectedSquad.Count);
+        Assert.All(result.ProjectedSquad, p => Assert.True(p.IsStarting));
+        Assert.DoesNotContain(result.ProjectedSquad, p => p.PlayerId == 101); // replaced, no longer present
+
+        var swappedInResult = result.ProjectedSquad.Single(p => p.PlayerId == 201);
+        Assert.Equal(9.0, swappedInResult.ProjectedPoints);
+        Assert.True(swappedInResult.IsCaptain);
+
+        var untouchedResult = result.ProjectedSquad.Single(p => p.PlayerId == 102);
+        Assert.Equal(3.0, untouchedResult.ProjectedPoints);
+        Assert.False(untouchedResult.IsCaptain);
+    }
+
+    [Fact]
     public void PlanBenchBoost_NeverRecommendsANonPositiveGainTransfer_EvenWhenFree()
     {
         var owned = MakePlayer(101, team: 1, elementType: 2, nowCost: 50, form: "6.0"); // already strong this week

@@ -1325,6 +1325,25 @@
     `;
   }
 
+  const POSITION_LABEL_BY_ELEMENT_TYPE = { 1: 'GK', 2: 'DEF', 3: 'MID', 4: 'FWD' };
+
+  // Groups a flat list of squad-shaped players (webName, teamName, elementType, isCaptain, and
+  // optionally isViceCaptain) into pitch rows plus a bench list, for any of the three squad shapes
+  // in the app (My Team picks, Squad Builder players, Bench Boost's projected squad) — isBenchedFn
+  // decides which field/rule marks a player as bench for that particular caller.
+  function groupPlayersForPitch(players, isBenchedFn) {
+    const startersByPos = { GK: [], DEF: [], MID: [], FWD: [] };
+    const bench = [];
+    for (const p of players) {
+      const pos = POSITION_LABEL_BY_ELEMENT_TYPE[p.elementType];
+      if (!pos) continue;
+      const pitchPlayer = { name: p.webName, team: p.teamName, isCaptain: !!p.isCaptain, isViceCaptain: !!p.isViceCaptain };
+      if (isBenchedFn(p)) bench.push(pitchPlayer);
+      else startersByPos[pos].push(pitchPlayer);
+    }
+    return { startersByPos, bench };
+  }
+
   // ---- Players ----
 
   function initPositionFilter() {
@@ -1845,8 +1864,6 @@
     `).join('');
   }
 
-  const POSITION_LABEL_BY_ELEMENT_TYPE = { 1: 'GK', 2: 'DEF', 3: 'MID', 4: 'FWD' };
-
   function renderMyTeamPitch(picks) {
     const wrap = document.getElementById('my-team-pitch-wrap');
     if (!picks.length) {
@@ -1854,15 +1871,7 @@
       return;
     }
 
-    const toPitchPlayer = p => ({ name: p.webName, team: p.teamName, isCaptain: p.isCaptain, isViceCaptain: p.isViceCaptain });
-    const startersByPos = { GK: [], DEF: [], MID: [], FWD: [] };
-    const bench = [];
-    for (const p of picks) {
-      const pos = POSITION_LABEL_BY_ELEMENT_TYPE[p.elementType];
-      if (!pos) continue;
-      if (p.isBenched) bench.push(toPitchPlayer(p));
-      else startersByPos[pos].push(toPitchPlayer(p));
-    }
+    const { startersByPos, bench } = groupPlayersForPitch(picks, p => p.isBenched);
 
     const formation = `${startersByPos.DEF.length}-${startersByPos.MID.length}-${startersByPos.FWD.length}`;
     document.getElementById('my-team-formation').textContent = `Formation: ${formation}`;
@@ -2048,7 +2057,20 @@
 
   function renderBenchBoostPlan(planData) {
     const container = document.getElementById('bb-plan-content');
-    const { currentSquadProjectedPoints, projectedSquadPointsAfterTransfers, plan } = planData;
+    const { currentSquadProjectedPoints, projectedSquadPointsAfterTransfers, plan, projectedSquad } = planData;
+
+    const pitchHtml = projectedSquad?.length
+      ? (() => {
+          const { startersByPos } = groupPlayersForPitch(projectedSquad, () => false);
+          return `
+            <div class="lineup-card">
+              <div style="font-weight:700;margin-bottom:2px;">Projected squad for this gameweek</div>
+              <div class="muted" style="font-size:0.82rem;margin-bottom:10px;">Bench Boost counts everyone, so there's no bench here — this is all 15${plan.recommendedTransfers.length ? ', with the recommended transfers applied' : ''}.</div>
+              ${renderPitch(startersByPos)}
+            </div>
+          `;
+        })()
+      : '';
 
     const gainNote = plan.recommendedTransfers.length
       ? ` &rarr; after transfers: <strong style="color:var(--status-good)">${projectedSquadPointsAfterTransfers.toFixed(1)} pts</strong>`
@@ -2073,6 +2095,7 @@
       : '';
 
     container.innerHTML = `
+      ${pitchHtml}
       <div class="lineup-card">
         <div style="font-weight:700;margin-bottom:6px;">Full-squad projected points, this gameweek</div>
         <div>As-is: <strong>${currentSquadProjectedPoints.toFixed(1)} pts</strong>${gainNote}</div>
@@ -2249,6 +2272,8 @@
       `;
     };
 
+    const { startersByPos, bench } = groupPlayersForPitch(squad.players, p => !p.isStarting);
+
     container.innerHTML = `
       <div class="lineup-card">
         <div class="lineup-card-header">
@@ -2264,6 +2289,8 @@
             £${(squad.budgetRemaining / 10).toFixed(1)}m unspent
           </div>
         </div>
+        ${renderPitch(startersByPos)}
+        ${renderBenchStrip(bench)}
         ${[1, 2, 3, 4].map(groupHtml).join('')}
       </div>
     `;
