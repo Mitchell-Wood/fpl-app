@@ -86,7 +86,9 @@ public class FotMobLineupService : IFotMobLineupService
                     continue;
                 }
 
-                if (!fotmobFixturesByTeamPair.TryGetValue((fotmobHomeId, fotmobAwayId), out var fotmobMatchId))
+                var fotmobHomeIdStr = fotmobHomeId.ToString();
+                var fotmobAwayIdStr = fotmobAwayId.ToString();
+                if (!fotmobFixturesByTeamPair.TryGetValue((fotmobHomeIdStr, fotmobAwayIdStr), out var fotmobMatchId))
                 {
                     continue;
                 }
@@ -104,7 +106,7 @@ public class FotMobLineupService : IFotMobLineupService
                     continue;
                 }
 
-                result.Status = lineup.LineupType == "lastStarting11" ? "predicted" : "confirmed";
+                result.Status = lineup.LineupType == "standard" ? "confirmed" : "predicted";
                 result.HomeTeam = MapTeamLineup(lineup.HomeTeam);
                 result.AwayTeam = MapTeamLineup(lineup.AwayTeam);
             }
@@ -130,7 +132,7 @@ public class FotMobLineupService : IFotMobLineupService
         });
     }
 
-    private async Task<Dictionary<(int Home, int Away), string>> GetFotMobFixturesByTeamPairAsync(CancellationToken cancellationToken)
+    private async Task<Dictionary<(string Home, string Away), string>> GetFotMobFixturesByTeamPairAsync(CancellationToken cancellationToken)
     {
         var cached = await _cache.GetOrCreateAsync(FixturesCacheKey, async entry =>
         {
@@ -138,7 +140,7 @@ public class FotMobLineupService : IFotMobLineupService
             var client = _httpClientFactory.CreateClient(HttpClientName);
             var response = await client.GetFromJsonAsync<FotMobLeagueFixturesResponse>(
                 $"leagues?id={PremierLeagueId}&type=league", cancellationToken);
-            var matches = response?.Matches?.AllMatches ?? [];
+            var matches = response?.Fixtures?.AllMatches ?? [];
             return matches.ToDictionary(m => (m.Home.Id, m.Away.Id), m => m.Id);
         });
 

@@ -7,11 +7,11 @@ namespace FplApp.Api.Services.FotMob;
 
 public class FotMobLeagueFixturesResponse
 {
-    [JsonPropertyName("matches")]
-    public FotMobMatchesWrapper? Matches { get; set; }
+    [JsonPropertyName("fixtures")]
+    public FotMobFixturesWrapper? Fixtures { get; set; }
 }
 
-public class FotMobMatchesWrapper
+public class FotMobFixturesWrapper
 {
     [JsonPropertyName("allMatches")]
     public List<FotMobFixtureSummary> AllMatches { get; set; } = [];
@@ -32,7 +32,7 @@ public class FotMobFixtureSummary
 public class FotMobTeamRef
 {
     [JsonPropertyName("id")]
-    public int Id { get; set; }
+    public string Id { get; set; } = string.Empty;
 
     [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
