@@ -93,6 +93,21 @@ public class FotMobPlayer
 
     [JsonPropertyName("isCaptain")]
     public bool IsCaptain { get; set; }
+
+    // Left-right position within the player's line on FotMob's horizontally-oriented pitch graphic
+    // (x = distance from own goal, y = position across the pitch width). Used to order players
+    // within a formation line the same way FotMob's own lineup graphic does.
+    [JsonPropertyName("horizontalLayout")]
+    public FotMobLayout? HorizontalLayout { get; set; }
+}
+
+public class FotMobLayout
+{
+    [JsonPropertyName("x")]
+    public double X { get; set; }
+
+    [JsonPropertyName("y")]
+    public double Y { get; set; }
 }
 
 public class FotMobUnavailablePlayer

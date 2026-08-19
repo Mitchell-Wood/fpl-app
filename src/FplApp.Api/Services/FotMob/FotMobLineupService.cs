@@ -151,7 +151,9 @@ public class FotMobLineupService : IFotMobLineupService
     {
         Name = team.Name,
         Formation = team.Formation,
-        Starters = team.Starters.Select(MapPlayer).ToList(),
+        // Sort by horizontalLayout.y so players within the same line (e.g. the front three) render
+        // in the same left-to-right order as FotMob's own pitch graphic.
+        Starters = team.Starters.OrderBy(p => p.HorizontalLayout?.Y ?? 0).Select(MapPlayer).ToList(),
         Subs = team.Subs.Select(MapPlayer).ToList(),
         Unavailable = team.Unavailable.Select(p => new UnavailablePlayer
         {
