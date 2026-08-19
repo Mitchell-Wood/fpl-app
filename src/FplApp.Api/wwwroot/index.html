@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FPL App</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%2337003c'/%3E%3Ccircle cx='32' cy='32' r='30' fill='none' stroke='%2300ff85' stroke-width='3'/%3E%3Cpath d='M32 14l6.5 4.7-2.5 7.7h-8l-2.5-7.7z' fill='%2300ff85'/%3E%3Cpath d='M18 26l7.7-2.5 2.5 7.7-6.2 5.6-7.5-3.8z' fill='%23ffffff' fill-opacity='.85'/%3E%3Cpath d='M46 26l-7.7-2.5-2.5 7.7 6.2 5.6 7.5-3.8z' fill='%23ffffff' fill-opacity='.85'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
     color-scheme: light;
@@ -99,7 +103,7 @@
   html { -webkit-text-size-adjust: 100%; }
   body {
     margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto, Helvetica, Arial, sans-serif;
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     font-size: 15px;
     line-height: 1.5;
     background: var(--page-plane);
@@ -113,18 +117,66 @@
       radial-gradient(ellipse 900px 320px at 15% -40%, rgba(0,255,133,0.16), transparent 60%),
       linear-gradient(135deg, var(--brand-1) 0%, var(--brand-2) 55%, var(--brand-3) 100%);
     box-shadow: var(--shadow-md);
+    position: relative;
+  }
+  .header-topbar {
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: 8px clamp(16px, 4vw, 40px);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.55);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  .header-topbar .season-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: rgba(255,255,255,0.85);
+  }
+  .header-topbar .season-chip::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--brand-accent);
+    box-shadow: 0 0 0 3px rgba(0,255,133,0.18);
   }
   .header-inner {
     max-width: 1320px;
     margin: 0 auto;
-    padding: 22px clamp(16px, 4vw, 40px) 0;
+    padding: 18px clamp(16px, 4vw, 40px) 0;
   }
+  .brand-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 14px;
+  }
+  .brand-mark {
+    flex: none;
+    width: 42px;
+    height: 42px;
+    filter: drop-shadow(0 2px 6px rgba(0,0,0,0.35));
+  }
+  .brand-lockup { flex: 1; min-width: 0; }
+  .brand-lockup .subtitle { margin-bottom: 0; }
   h1 {
     margin: 0 0 4px;
-    font-size: 1.375rem;
-    font-weight: 700;
+    font-family: "Sora", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 1.5rem;
+    font-weight: 800;
     letter-spacing: -0.01em;
     color: #ffffff;
+  }
+  h1 .brand-suffix {
+    font-weight: 600;
+    color: var(--brand-accent);
   }
   .subtitle {
     color: var(--text-secondary);
@@ -562,24 +614,102 @@
     color: #ffffff;
     margin: 1px 3px 1px 0;
   }
+  .partners-strip {
+    border-top: 1px solid var(--border);
+    background: var(--surface-1);
+    margin-top: 40px;
+  }
+  .partners-strip-inner {
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: 22px clamp(16px, 4vw, 40px);
+    text-align: center;
+  }
+  .partners-label {
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin: 0 0 16px;
+  }
+  .partners-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(20px, 4vw, 44px);
+  }
+  .partner-mark {
+    font-family: "Sora", "Inter", sans-serif;
+    font-weight: 800;
+    font-size: 1.05rem;
+    letter-spacing: -0.01em;
+    color: var(--text-muted);
+    opacity: 0.55;
+    filter: grayscale(1);
+    transition: opacity 0.15s ease, filter 0.15s ease, color 0.15s ease;
+    white-space: nowrap;
+    cursor: default;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .partner-mark:hover {
+    opacity: 1;
+    filter: grayscale(0);
+    color: var(--text-primary);
+  }
+  .partner-mark .partner-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--brand-accent);
+  }
+  .partner-mark.serif { font-family: Georgia, "Times New Roman", serif; font-style: italic; font-weight: 700; }
+  .partner-mark.mono { font-family: "Sora", sans-serif; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; font-size: 0.92rem; }
+  .partners-fineprint {
+    margin: 16px 0 0;
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    opacity: 0.7;
+  }
   footer {
     text-align: center;
     color: var(--text-muted);
     font-size: 0.8rem;
-    padding: 8px 0 32px;
+    padding: 18px 0 32px;
   }
   @media (max-width: 560px) {
     body { font-size: 14px; }
     nav.tabs button { padding: 9px 12px; font-size: 0.82rem; }
     .header-inner { padding-top: 18px; }
+    .partners-row { gap: 20px 28px; }
   }
 </style>
 </head>
 <body>
 <header>
+  <div class="header-topbar">
+    <span class="season-chip">2026/27 Season</span>
+    <span>Fan-made &middot; unofficial</span>
+  </div>
   <div class="header-inner">
-    <h1>FPL App</h1>
-    <p class="subtitle">Live-ish data from the Fantasy Premier League API</p>
+    <div class="brand-row">
+      <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true">
+        <circle cx="32" cy="32" r="30" fill="var(--brand-1)" />
+        <circle cx="32" cy="32" r="30" fill="none" stroke="var(--brand-accent)" stroke-width="2.5" />
+        <path d="M32 14l6.5 4.7-2.5 7.7h-8l-2.5-7.7z" fill="var(--brand-accent)" />
+        <path d="M18 26l7.7-2.5 2.5 7.7-6.2 5.6-7.5-3.8z" fill="#ffffff" fill-opacity=".92" />
+        <path d="M46 26l-7.7-2.5-2.5 7.7 6.2 5.6 7.5-3.8z" fill="#ffffff" fill-opacity=".92" />
+        <path d="M22 43l3-8.4 7 5v6z" fill="#ffffff" fill-opacity=".7" />
+        <path d="M42 43l-3-8.4-7 5v6z" fill="#ffffff" fill-opacity=".7" />
+      </svg>
+      <div class="brand-lockup">
+        <h1>FPL App<span class="brand-suffix"> &bull; Command Centre</span></h1>
+        <p class="subtitle">Live-ish data from the Fantasy Premier League API</p>
+      </div>
+    </div>
     <nav class="tabs">
       <button data-panel="my-team" class="active">My Team</button>
       <button data-panel="lineups">Predicted Lineups</button>
@@ -1004,7 +1134,20 @@
     <div id="lineups-list"></div>
   </section>
 </main>
-<footer>Data from fantasy.premierleague.com &middot; bootstrap-static cached 15 min server-side</footer>
+<div class="partners-strip">
+  <div class="partners-strip-inner">
+    <p class="partners-label">Official partners</p>
+    <div class="partners-row">
+      <span class="partner-mark">APEX<span class="partner-dot"></span>SPORT</span>
+      <span class="partner-mark serif">Northgate &amp; Vane</span>
+      <span class="partner-mark mono">TURFLINE</span>
+      <span class="partner-mark">Zenith<span class="partner-dot"></span>Bank</span>
+      <span class="partner-mark mono">Halcyon Sports Network</span>
+    </div>
+    <p class="partners-fineprint">Placeholder partner marks for visual flair only &mdash; not real sponsors or endorsements.</p>
+  </div>
+</div>
+<footer>Data from fantasy.premierleague.com &middot; bootstrap-static cached 15 min server-side &middot; unofficial fan-made project, not affiliated with the Premier League</footer>
 
 <script>
   const state = {
