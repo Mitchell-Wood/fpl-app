@@ -106,7 +106,15 @@ public class FotMobLineupService : IFotMobLineupService
                     continue;
                 }
 
-                result.Status = lineup.LineupType == "standard" ? "confirmed" : "predicted";
+                result.Status = lineup.LineupType switch
+                {
+                    "standard" => "confirmed",
+                    "predicted" => "predicted",
+                    // FotMob falls back to each team's most recent starting XI when it doesn't have
+                    // an actual prediction for this fixture yet — flag that distinction to the user.
+                    "lastStarting11" => "lastKnownLineup",
+                    _ => "predicted",
+                };
                 result.HomeTeam = MapTeamLineup(lineup.HomeTeam);
                 result.AwayTeam = MapTeamLineup(lineup.AwayTeam);
             }

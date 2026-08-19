@@ -6,7 +6,7 @@ public class PredictedLineup
     public int FixtureId { get; set; }
     public DateTimeOffset? KickoffTime { get; set; }
 
-    /// <summary>"predicted", "confirmed", or "unavailable".</summary>
+    /// <summary>"predicted", "confirmed", "lastKnownLineup", or "unavailable".</summary>
     public string Status { get; set; } = "unavailable";
 
     public LineupTeam? HomeTeam { get; set; }

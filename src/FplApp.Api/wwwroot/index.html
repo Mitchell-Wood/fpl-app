@@ -433,6 +433,7 @@
   }
   .lineup-status-predicted { background: var(--series-1); }
   .lineup-status-confirmed { background: var(--status-good); }
+  .lineup-status-lastKnownLineup { background: var(--status-warning); color: #1a1200; }
   .lineup-status-unavailable { background: var(--gridline); color: var(--text-secondary); }
   .lineup-teams {
     display: grid;
@@ -3054,6 +3055,7 @@
     const map = {
       predicted: ['Predicted', 'lineup-status-predicted'],
       confirmed: ['Confirmed', 'lineup-status-confirmed'],
+      lastKnownLineup: ['Last known XI', 'lineup-status-lastKnownLineup'],
       unavailable: ['Not yet available', 'lineup-status-unavailable'],
     };
     const [label, cls] = map[status] || [status, 'lineup-status-unavailable'];
@@ -3092,11 +3094,15 @@
     const kickoff = fixture && fixture.kickoff_time
       ? new Date(fixture.kickoff_time).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
       : 'TBC';
+    const lastKnownNote = lineup.status === 'lastKnownLineup'
+      ? '<p class="muted" style="font-size:0.78rem;margin:2px 0 0;">FotMob doesn\'t have a prediction for this fixture yet, so this shows each team\'s starting XI from their last match instead.</p>'
+      : '';
     return `<div class="lineup-card">
       <div class="lineup-card-header">
         <strong>${kickoff}</strong>
         ${statusBadge(lineup.status)}
       </div>
+      ${lastKnownNote}
       <div class="lineup-teams">
         <div class="lineup-team">${renderLineupTeam(lineup.homeTeam)}</div>
         <div class="lineup-team">${renderLineupTeam(lineup.awayTeam)}</div>
