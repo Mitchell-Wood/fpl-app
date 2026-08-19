@@ -660,66 +660,6 @@
   @media (max-width: 480px) {
     .club-sponsor-inner { text-align: center; flex-direction: column; gap: 10px; }
   }
-  .partners-strip {
-    border-top: 1px solid var(--border);
-    background: var(--surface-1);
-    margin-top: 0;
-  }
-  .partners-strip-inner {
-    max-width: 1320px;
-    margin: 0 auto;
-    padding: 22px clamp(16px, 4vw, 40px);
-    text-align: center;
-  }
-  .partners-label {
-    font-size: 0.68rem;
-    font-weight: 700;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--text-muted);
-    margin: 0 0 16px;
-  }
-  .partners-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: center;
-    gap: clamp(20px, 4vw, 44px);
-  }
-  .partner-mark {
-    font-family: "Sora", "Inter", sans-serif;
-    font-weight: 800;
-    font-size: 1.05rem;
-    letter-spacing: -0.01em;
-    color: var(--text-muted);
-    opacity: 0.55;
-    filter: grayscale(1);
-    transition: opacity 0.15s ease, filter 0.15s ease, color 0.15s ease;
-    white-space: nowrap;
-    cursor: default;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .partner-mark:hover {
-    opacity: 1;
-    filter: grayscale(0);
-    color: var(--text-primary);
-  }
-  .partner-mark .partner-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--brand-accent);
-  }
-  .partner-mark.serif { font-family: Georgia, "Times New Roman", serif; font-style: italic; font-weight: 700; }
-  .partner-mark.mono { font-family: "Sora", sans-serif; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; font-size: 0.92rem; }
-  .partners-fineprint {
-    margin: 16px 0 0;
-    font-size: 0.68rem;
-    color: var(--text-muted);
-    opacity: 0.7;
-  }
   footer {
     text-align: center;
     color: var(--text-muted);
@@ -730,7 +670,6 @@
     body { font-size: 14px; }
     nav.tabs button { padding: 9px 12px; font-size: 0.82rem; }
     .header-inner { padding-top: 18px; }
-    .partners-row { gap: 20px 28px; }
   }
 </style>
 </head>
@@ -1188,19 +1127,6 @@
       <p class="club-sponsor-name">Harthill FC</p>
       <p class="club-sponsor-sub">Sunday League &middot; Est. 2024</p>
     </div>
-  </div>
-</div>
-<div class="partners-strip">
-  <div class="partners-strip-inner">
-    <p class="partners-label">Official partners</p>
-    <div class="partners-row">
-      <span class="partner-mark">APEX<span class="partner-dot"></span>SPORT</span>
-      <span class="partner-mark serif">Northgate &amp; Vane</span>
-      <span class="partner-mark mono">TURFLINE</span>
-      <span class="partner-mark">Zenith<span class="partner-dot"></span>Bank</span>
-      <span class="partner-mark mono">Halcyon Sports Network</span>
-    </div>
-    <p class="partners-fineprint">Placeholder partner marks for visual flair only &mdash; not real sponsors or endorsements.</p>
   </div>
 </div>
 <footer>Data from fantasy.premierleague.com &middot; bootstrap-static cached 15 min server-side &middot; unofficial fan-made project, not affiliated with the Premier League</footer>
