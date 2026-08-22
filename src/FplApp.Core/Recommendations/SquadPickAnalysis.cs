@@ -19,6 +19,10 @@ public class SquadPickAnalysis
     /// <summary>Projected points for the next gameweek, used to recommend a starting XI/captain.</summary>
     public double ExpectedPointsNextGameweek { get; set; }
 
+    /// <summary>This player's fixture(s) for the next gameweek — empty for a blank, two entries
+    /// for a double gameweek.</summary>
+    public List<CaptainFixture> NextFixtures { get; set; } = [];
+
     /// <summary>Human-readable flags, e.g. "Injured", "Poor recent form", "Tough fixtures ahead".</summary>
     public List<string> Flags { get; set; } = [];
 }

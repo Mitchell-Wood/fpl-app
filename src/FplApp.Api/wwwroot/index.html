@@ -595,6 +595,22 @@
     color: var(--text-muted);
     margin-bottom: 2px;
   }
+  .pitch-fixtures {
+    margin-top: 3px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    align-items: center;
+  }
+  .pitch-fixture-chip {
+    display: inline-block;
+    font-size: 0.6rem;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 999px;
+    color: #ffffff;
+    white-space: nowrap;
+  }
   .pitch-pair {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -1394,7 +1410,20 @@
     </svg>`;
   }
 
-  // player: { name, team (short name or full name), isCaptain, isViceCaptain }
+  // fixtures: CaptainFixture[] (opponent, venue, difficulty), or undefined if not supplied by
+  // this caller — null/undefined skips the fixture line entirely, an empty array renders "Blank".
+  function pitchFixturesHtml(fixtures) {
+    if (fixtures == null) return '';
+    if (!fixtures.length) {
+      return `<div class="pitch-fixtures"><span class="pitch-fixture-chip diff-blank">Blank</span></div>`;
+    }
+    const chips = fixtures.map(f =>
+      `<span class="pitch-fixture-chip ${difficultyClass(f.difficulty)}" title="${DIFFICULTY_LABELS[f.difficulty]} (${f.difficulty})">${escapeHtml(f.opponent)} (${f.venue})</span>`
+    ).join('');
+    return `<div class="pitch-fixtures">${chips}</div>`;
+  }
+
+  // player: { name, team (short name or full name), isCaptain, isViceCaptain, nextFixtures? }
   function pitchPlayerHtml(player) {
     const badge = player.isCaptain
       ? '<span class="pitch-captain-badge">C</span>'
@@ -1403,6 +1432,7 @@
       <div class="pitch-player">
         <div class="pitch-shirt">${shirtSvg(kitFor(player.team))}${badge}</div>
         <div class="pitch-name">${escapeHtml(player.name)}</div>
+        ${pitchFixturesHtml(player.nextFixtures)}
       </div>
     `;
   }
@@ -1437,16 +1467,22 @@
   const POSITION_LABEL_BY_ELEMENT_TYPE = { 1: 'GK', 2: 'DEF', 3: 'MID', 4: 'FWD' };
 
   // Groups a flat list of squad-shaped players (webName, teamName, elementType, isCaptain, and
-  // optionally isViceCaptain) into pitch rows plus a bench list, for any of the three squad shapes
-  // in the app (My Team picks, Squad Builder players, Bench Boost's projected squad) — isBenchedFn
-  // decides which field/rule marks a player as bench for that particular caller.
+  // optionally isViceCaptain, nextFixtures) into pitch rows plus a bench list, for either squad
+  // shape in the app (My Team picks, Squad Builder players) — isBenchedFn decides which
+  // field/rule marks a player as bench for that particular caller.
   function groupPlayersForPitch(players, isBenchedFn) {
     const startersByPos = { GK: [], DEF: [], MID: [], FWD: [] };
     const bench = [];
     for (const p of players) {
       const pos = POSITION_LABEL_BY_ELEMENT_TYPE[p.elementType];
       if (!pos) continue;
-      const pitchPlayer = { name: p.webName, team: p.teamName, isCaptain: !!p.isCaptain, isViceCaptain: !!p.isViceCaptain };
+      const pitchPlayer = {
+        name: p.webName,
+        team: p.teamName,
+        isCaptain: !!p.isCaptain,
+        isViceCaptain: !!p.isViceCaptain,
+        nextFixtures: p.nextFixtures,
+      };
       if (isBenchedFn(p)) bench.push(pitchPlayer);
       else startersByPos[pos].push(pitchPlayer);
     }

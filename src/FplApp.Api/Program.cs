@@ -122,16 +122,22 @@ app.MapGet("/api/my-team", async (int teamId, int eventId, IFplDataService fplDa
         // picks are public, it's too late to change that gameweek's team anyway.
         var targetEventId = bootstrap.Events.FirstOrDefault(e => e.IsNext)?.Id ?? eventId;
         var recommendation = lineupOptimizerService.OptimizeLineup(bootstrap, fixtures, picks, targetEventId);
+        var playersById = bootstrap.Elements.ToDictionary(p => p.Id);
+        var teamsById = bootstrap.Teams.ToDictionary(t => t.Id);
+        var targetEventFixtures = fixtures.Where(f => f.Event == targetEventId).ToList();
         foreach (var pick in squad)
         {
-            if (!recommendation.ByPlayerId.TryGetValue(pick.PlayerId, out var rec))
+            if (recommendation.ByPlayerId.TryGetValue(pick.PlayerId, out var rec))
             {
-                continue;
+                pick.IsBenched = !rec.IsStarting;
+                pick.IsCaptain = rec.IsCaptain;
+                pick.IsViceCaptain = rec.IsViceCaptain;
+                pick.ExpectedPointsNextGameweek = rec.ExpectedPoints;
             }
-            pick.IsBenched = !rec.IsStarting;
-            pick.IsCaptain = rec.IsCaptain;
-            pick.IsViceCaptain = rec.IsViceCaptain;
-            pick.ExpectedPointsNextGameweek = rec.ExpectedPoints;
+            if (playersById.TryGetValue(pick.PlayerId, out var player))
+            {
+                pick.NextFixtures = BuildNextFixtures(player, teamsById, targetEventFixtures);
+            }
         }
 
         return Results.Ok(new
@@ -150,7 +156,7 @@ app.MapGet("/api/my-team", async (int teamId, int eventId, IFplDataService fplDa
     })
     .WithName("GetMyTeam");
 
-app.MapGet("/api/captain-suggestions", async (int teamId, int eventId, IFplDataService fplDataService, CaptaincyService captaincyService, CancellationToken cancellationToken) =>
+app.MapGet("/api/captain-suggestions", async (int teamId, int eventId, IFplDataService fplDataService, CaptaincyService captaincyService, LineupOptimizerService lineupOptimizerService, CancellationToken cancellationToken) =>
     {
         var entry = await fplDataService.GetEntryAsync(teamId, cancellationToken);
         if (entry is null)
@@ -169,9 +175,29 @@ app.MapGet("/api/captain-suggestions", async (int teamId, int eventId, IFplDataS
 
         // Captaincy only matters for a gameweek whose deadline hasn't passed yet, so score against
         // the next upcoming gameweek's fixtures rather than the (already-locked) squad's own one —
-        // otherwise "suggestions" would just describe a captain choice it's too late to change.
+        // otherwise "suggestions" would just describe a captain choice it's too late to change. Rank
+        // the recommended starting XI (the one shown on the pitch), not whichever 11 were actually
+        // declared for the locked gameweek, so the two stay consistent.
         var targetEventId = bootstrap.Events.FirstOrDefault(e => e.IsNext)?.Id ?? eventId;
-        var suggestions = captaincyService.SuggestCaptains(bootstrap, fixtures, picks, targetEventId);
+        var recommendation = lineupOptimizerService.OptimizeLineup(bootstrap, fixtures, picks, targetEventId);
+        var recommendedPicks = new TeamPicks
+        {
+            ActiveChip = picks.ActiveChip,
+            EntryHistory = picks.EntryHistory,
+            Picks = picks.Picks.Select(p =>
+            {
+                var rec = recommendation.ByPlayerId.GetValueOrDefault(p.Element);
+                return new Pick
+                {
+                    Element = p.Element,
+                    Position = rec?.IsStarting == true ? 1 : 12,
+                    Multiplier = p.Multiplier,
+                    IsCaptain = rec?.IsCaptain ?? false,
+                    IsViceCaptain = rec?.IsViceCaptain ?? false,
+                };
+            }).ToList(),
+        };
+        var suggestions = captaincyService.SuggestCaptains(bootstrap, fixtures, recommendedPicks, targetEventId);
 
         return Results.Ok(new { teamId, eventId, available = true, suggestions });
     })
@@ -301,6 +327,24 @@ app.MapGet("/api/league-standings", async (int leagueId, int? page, IFplDataServ
         });
     })
     .WithName("GetLeagueStandings");
+
+static List<CaptainFixture> BuildNextFixtures(Player player, Dictionary<int, Team> teamsById, List<Fixture> eventFixtures)
+{
+    var result = new List<CaptainFixture>();
+    foreach (var fixture in eventFixtures.Where(f => f.TeamH == player.Team || f.TeamA == player.Team))
+    {
+        var isHome = fixture.TeamH == player.Team;
+        var opponentId = isHome ? fixture.TeamA : fixture.TeamH;
+        var difficulty = isHome ? fixture.TeamHDifficulty : fixture.TeamADifficulty;
+        result.Add(new CaptainFixture
+        {
+            Opponent = teamsById.GetValueOrDefault(opponentId)?.ShortName ?? "?",
+            Venue = isHome ? "H" : "A",
+            Difficulty = difficulty,
+        });
+    }
+    return result;
+}
 
 // Each gameweek 1-19 and 20-38 half of the season grants its own fresh set of all four chips —
 // an unused chip from the first half doesn't carry over, and a chip already played in the first
