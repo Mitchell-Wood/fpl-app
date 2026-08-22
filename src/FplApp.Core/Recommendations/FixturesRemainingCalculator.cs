@@ -16,7 +16,11 @@ public static class FixturesRemainingCalculator
         ArgumentNullException.ThrowIfNull(picks);
 
         var playersById = bootstrap.Elements.ToDictionary(p => p.Id);
-        var eventFixtures = fixtures.Where(f => f.Event == eventId && !f.Finished).ToList();
+
+        // FPL leaves "finished" false for a while after full-time, pending official confirmation
+        // (bonus points etc.) — "finished_provisional" flips true immediately at the final whistle,
+        // so it's the accurate signal for whether a fixture is actually still to be played.
+        var eventFixtures = fixtures.Where(f => f.Event == eventId && !f.FinishedProvisional).ToList();
 
         var count = 0;
         foreach (var pick in picks.Picks.Where(p => p.Position <= 11))

@@ -1,4 +1,4 @@
-using FplApp.Core.Models;
+﻿using FplApp.Core.Models;
 using FplApp.Core.Recommendations;
 
 namespace FplApp.Core.Tests.Recommendations;
@@ -25,7 +25,7 @@ public class FixturesRemainingCalculatorTests
     {
         var starter = MakePlayer(1, team: 1);
         var bootstrap = MakeBootstrap(starter);
-        var fixtures = new List<Fixture> { new() { Event = EventId, TeamH = 1, TeamA = 2, Finished = false } };
+        var fixtures = new List<Fixture> { new() { Event = EventId, TeamH = 1, TeamA = 2, FinishedProvisional = false } };
         var picks = new TeamPicks { Picks = [MakePick(starter, 1)] };
 
         var result = FixturesRemainingCalculator.CountRemaining(bootstrap, fixtures, picks, EventId);
@@ -38,7 +38,7 @@ public class FixturesRemainingCalculatorTests
     {
         var benched = MakePlayer(1, team: 1);
         var bootstrap = MakeBootstrap(benched);
-        var fixtures = new List<Fixture> { new() { Event = EventId, TeamH = 1, TeamA = 2, Finished = false } };
+        var fixtures = new List<Fixture> { new() { Event = EventId, TeamH = 1, TeamA = 2, FinishedProvisional = false } };
         var picks = new TeamPicks { Picks = [MakePick(benched, 12)] };
 
         var result = FixturesRemainingCalculator.CountRemaining(bootstrap, fixtures, picks, EventId);
@@ -51,7 +51,23 @@ public class FixturesRemainingCalculatorTests
     {
         var starter = MakePlayer(1, team: 1);
         var bootstrap = MakeBootstrap(starter);
-        var fixtures = new List<Fixture> { new() { Event = EventId, TeamH = 1, TeamA = 2, Finished = true } };
+        var fixtures = new List<Fixture> { new() { Event = EventId, TeamH = 1, TeamA = 2, FinishedProvisional = true } };
+        var picks = new TeamPicks { Picks = [MakePick(starter, 1)] };
+
+        var result = FixturesRemainingCalculator.CountRemaining(bootstrap, fixtures, picks, EventId);
+
+        Assert.Equal(0, result);
+    }
+
+    [Fact]
+    public void CountRemaining_TreatsAFixtureAsPlayed_AssoonAsFinishedProvisional_EvenIfFinishedIsStillFalse()
+    {
+        // FPL leaves "finished" false for a while post-match pending official confirmation (bonus
+        // points etc.), while "finished_provisional" flips true immediately at full-time — this is
+        // the real shape the live API returns for a just-ended match.
+        var starter = MakePlayer(1, team: 1);
+        var bootstrap = MakeBootstrap(starter);
+        var fixtures = new List<Fixture> { new() { Event = EventId, TeamH = 1, TeamA = 2, Finished = false, FinishedProvisional = true } };
         var picks = new TeamPicks { Picks = [MakePick(starter, 1)] };
 
         var result = FixturesRemainingCalculator.CountRemaining(bootstrap, fixtures, picks, EventId);
@@ -66,8 +82,8 @@ public class FixturesRemainingCalculatorTests
         var bootstrap = MakeBootstrap(starter);
         var fixtures = new List<Fixture>
         {
-            new() { Event = EventId, TeamH = 1, TeamA = 2, Finished = false },
-            new() { Event = EventId, TeamH = 3, TeamA = 1, Finished = false },
+            new() { Event = EventId, TeamH = 1, TeamA = 2, FinishedProvisional = false },
+            new() { Event = EventId, TeamH = 3, TeamA = 1, FinishedProvisional = false },
         };
         var picks = new TeamPicks { Picks = [MakePick(starter, 1)] };
 
@@ -81,7 +97,7 @@ public class FixturesRemainingCalculatorTests
     {
         var starter = MakePlayer(1, team: 1);
         var bootstrap = MakeBootstrap(starter);
-        var fixtures = new List<Fixture> { new() { Event = EventId, TeamH = 2, TeamA = 3, Finished = false } };
+        var fixtures = new List<Fixture> { new() { Event = EventId, TeamH = 2, TeamA = 3, FinishedProvisional = false } };
         var picks = new TeamPicks { Picks = [MakePick(starter, 1)] };
 
         var result = FixturesRemainingCalculator.CountRemaining(bootstrap, fixtures, picks, EventId);
@@ -97,8 +113,8 @@ public class FixturesRemainingCalculatorTests
         var bootstrap = MakeBootstrap(starterOne, starterTwo);
         var fixtures = new List<Fixture>
         {
-            new() { Event = EventId, TeamH = 1, TeamA = 2, Finished = false },
-            new() { Event = EventId, TeamH = 3, TeamA = 4, Finished = false },
+            new() { Event = EventId, TeamH = 1, TeamA = 2, FinishedProvisional = false },
+            new() { Event = EventId, TeamH = 3, TeamA = 4, FinishedProvisional = false },
         };
         var picks = new TeamPicks { Picks = [MakePick(starterOne, 1), MakePick(starterTwo, 2)] };
 
