@@ -278,12 +278,20 @@ app.MapGet("/api/league-standings", async (int leagueId, int? page, IFplDataServ
     })
     .WithName("GetLeagueStandings");
 
-// Maps each of the four chips to "active" (being played this gameweek), "used" (already played in
-// some other gameweek), or "available" (not yet played).
+// Each gameweek 1-19 and 20-38 half of the season grants its own fresh set of all four chips —
+// an unused chip from the first half doesn't carry over, and a chip already played in the first
+// half becomes available again in the second.
+const int SecondHalfStartEvent = 20;
+
+static bool SameChipHalf(int eventA, int eventB)
+    => (eventA < SecondHalfStartEvent) == (eventB < SecondHalfStartEvent);
+
+// Maps each of the four chips to "active" (being played this gameweek), "used" (already played
+// earlier in the same half of the season), or "available" (not yet played this half).
 static Dictionary<string, string> BuildChipStatus(string? activeChip, IReadOnlyList<ChipPlay>? chipHistory, int eventId)
 {
     var usedElsewhere = (chipHistory ?? [])
-        .Where(c => c.Event != eventId)
+        .Where(c => c.Event != eventId && SameChipHalf(c.Event, eventId))
         .Select(c => c.Name)
         .ToHashSet();
 
