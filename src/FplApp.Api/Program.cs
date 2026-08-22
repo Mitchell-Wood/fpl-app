@@ -222,7 +222,16 @@ app.MapGet("/api/league-standings", async (int leagueId, int? page, IFplDataServ
             leagueName = standings.League.Name,
             hasNext = standings.Standings.HasNext,
             page = standings.Standings.Page,
-            results = standings.Standings.Results,
+            results = standings.Standings.Results.Select(r => new
+            {
+                entry = r.Entry,
+                entryName = r.EntryName,
+                playerName = r.PlayerName,
+                rank = r.Rank,
+                lastRank = r.LastRank,
+                total = r.Total,
+                eventTotal = r.EventTotal,
+            }),
         });
     })
     .WithName("GetLeagueStandings");
@@ -250,8 +259,18 @@ app.MapGet("/api/manager-history", async (int teamId, IFplDataService fplDataSer
             teamName = entry.Name,
             managerName,
             estimatedFreeTransfers,
-            gameweeks = history.Current,
-            chips = history.Chips,
+            gameweeks = history.Current.Select(gw => new
+            {
+                @event = gw.Event,
+                points = gw.Points,
+                totalPoints = gw.TotalPoints,
+                bank = gw.Bank,
+                value = gw.Value,
+                eventTransfers = gw.EventTransfers,
+                eventTransfersCost = gw.EventTransfersCost,
+                pointsOnBench = gw.PointsOnBench,
+            }),
+            chips = history.Chips.Select(c => new { name = c.Name, @event = c.Event }),
         });
     })
     .WithName("GetManagerHistory");
