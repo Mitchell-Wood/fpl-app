@@ -1334,6 +1334,10 @@
     SUN: { primary: '#EB172B', secondary: '#FFFFFF', pattern: 'stripes' },
   };
   const DEFAULT_KIT = { primary: '#6b7280', secondary: '#e5e7eb', pattern: 'solid' };
+  // FPL doesn't publish kit colors at all — TEAM_KITS above is hand-authored for outfield home
+  // kits and doesn't attempt to track each team's separate (and frequently-changing) goalkeeper
+  // kit, so keepers get one consistent neutral kit instead.
+  const GOALKEEPER_KIT = { primary: '#111111', secondary: '#ffffff', pattern: 'solid' };
 
   // FotMob's team names don't always match FPL's short names (e.g. "Manchester United" vs "Man
   // Utd") — these aliases catch the common variants; anything still unmatched falls back to a
@@ -1423,14 +1427,15 @@
     return `<div class="pitch-fixtures">${chips}</div>`;
   }
 
-  // player: { name, team (short name or full name), isCaptain, isViceCaptain, nextFixtures? }
+  // player: { name, team (short name or full name), isCaptain, isViceCaptain, isGoalkeeper?, nextFixtures? }
   function pitchPlayerHtml(player) {
     const badge = player.isCaptain
       ? '<span class="pitch-captain-badge">C</span>'
       : (player.isViceCaptain ? '<span class="pitch-captain-badge pitch-vc-badge">V</span>' : '');
+    const kit = player.isGoalkeeper ? GOALKEEPER_KIT : kitFor(player.team);
     return `
       <div class="pitch-player">
-        <div class="pitch-shirt">${shirtSvg(kitFor(player.team))}${badge}</div>
+        <div class="pitch-shirt">${shirtSvg(kit)}${badge}</div>
         <div class="pitch-name">${escapeHtml(player.name)}</div>
         ${pitchFixturesHtml(player.nextFixtures)}
       </div>
@@ -1481,11 +1486,14 @@
         team: p.teamName,
         isCaptain: !!p.isCaptain,
         isViceCaptain: !!p.isViceCaptain,
+        isGoalkeeper: p.elementType === 1,
         nextFixtures: p.nextFixtures,
       };
       if (isBenchedFn(p)) bench.push(pitchPlayer);
       else startersByPos[pos].push(pitchPlayer);
     }
+    // FPL always shows the reserve goalkeeper first on the bench, regardless of squad order.
+    bench.sort((a, b) => (a.isGoalkeeper ? 0 : 1) - (b.isGoalkeeper ? 0 : 1));
     return { startersByPos, bench };
   }
 
