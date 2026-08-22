@@ -36,7 +36,6 @@ builder.Services.AddSingleton<CaptaincyService>();
 builder.Services.AddSingleton<PriceChangeWatchService>();
 builder.Services.AddSingleton<TransferPlannerService>();
 builder.Services.AddSingleton<SquadBuilderService>();
-builder.Services.AddSingleton<BenchBoostPlannerService>();
 
 var app = builder.Build();
 
@@ -404,29 +403,5 @@ app.MapGet("/api/wildcard-squad", async (int? teamId, int? eventId, int? budget,
         }
     })
     .WithName("GetWildcardSquad");
-
-app.MapGet("/api/bench-boost-plan", async (int teamId, int eventId, int targetEventId, int? freeTransfers, IFplDataService fplDataService, SquadAnalysisService squadAnalysisService, BenchBoostPlannerService benchBoostPlannerService, CancellationToken cancellationToken) =>
-    {
-        var entry = await fplDataService.GetEntryAsync(teamId, cancellationToken);
-        if (entry is null)
-        {
-            return Results.NotFound(new { message = "No FPL team found with that ID." });
-        }
-
-        var picks = await fplDataService.GetPicksAsync(teamId, eventId, cancellationToken);
-        if (picks is null)
-        {
-            return Results.Ok(new { teamId, eventId, available = false });
-        }
-
-        var bootstrap = await fplDataService.GetBootstrapStaticAsync(cancellationToken);
-        var fixtures = await fplDataService.GetFixturesAsync(cancellationToken);
-        var squad = squadAnalysisService.AnalyzeSquad(bootstrap, fixtures, picks);
-        var plan = benchBoostPlannerService.PlanBenchBoost(
-            bootstrap, fixtures, squad, picks.EntryHistory.Bank, targetEventId, freeTransfers ?? 1);
-
-        return Results.Ok(new { teamId, eventId, available = true, plan });
-    })
-    .WithName("GetBenchBoostPlan");
 
 app.Run();
