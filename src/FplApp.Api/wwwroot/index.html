@@ -869,7 +869,6 @@
     </p>
     <div class="controls">
       <input id="my-team-id" type="text" inputmode="numeric" placeholder="Team ID, e.g. 1234567" style="min-width:180px">
-      <select id="my-team-gameweek"></select>
       <button id="my-team-load" type="button">Load team</button>
     </div>
     <div id="my-team-status" class="status-msg" style="display:none"></div>
@@ -1930,22 +1929,17 @@
 
   const MY_TEAM_ID_STORAGE_KEY = 'fplapp:teamId';
 
-  function initMyTeamGameweekFilter() {
-    const select = document.getElementById('my-team-gameweek');
+  // The manager's current, locked-in squad — picks aren't public for a gameweek until its
+  // deadline passes, so there's nothing to show yet for "next" even once it exists.
+  function getMyTeamCurrentEventId() {
     const events = state.bootstrap.events;
-    const hasCurrent = events.some(e => e.is_current);
-    select.innerHTML = '';
-    for (const e of events) {
-      const opt = document.createElement('option');
-      opt.value = e.id;
-      opt.textContent = e.name + (e.is_next ? ' (next)' : e.is_current ? ' (current)' : '');
-      // Default to the manager's current, locked-in squad (picks aren't public for a gameweek
-      // until its deadline passes, so "next" has nothing to show until it becomes "current").
-      if (hasCurrent ? e.is_current : e.is_next) opt.selected = true;
-      select.appendChild(opt);
-    }
-    if (!select.value && events.length) select.value = events[0].id;
+    const current = events.find(e => e.is_current);
+    if (current) return current.id;
+    const next = events.find(e => e.is_next);
+    return (next || events[0])?.id;
+  }
 
+  function initMyTeamGameweekFilter() {
     const savedId = localStorage.getItem(MY_TEAM_ID_STORAGE_KEY);
     if (savedId) {
       document.getElementById('my-team-id').value = savedId;
@@ -2281,7 +2275,7 @@
   async function loadMyTeam() {
     const teamIdInput = document.getElementById('my-team-id');
     const teamId = teamIdInput.value.trim();
-    const eventId = document.getElementById('my-team-gameweek').value;
+    const eventId = getMyTeamCurrentEventId();
     const statusEl = document.getElementById('my-team-status');
     const summaryEl = document.getElementById('my-team-summary');
     const tableWrap = document.getElementById('my-team-table-wrap');
@@ -2689,9 +2683,6 @@
   document.querySelectorAll('input[name="squad-builder-chip"]').forEach(radio => radio.addEventListener('change', () => {
     document.getElementById('squad-builder-weeks-label').style.display = document.getElementById('squad-builder-chip-wildcard').checked ? '' : 'none';
   }));
-  document.getElementById('my-team-gameweek').addEventListener('change', () => {
-    if (document.getElementById('my-team-id').value.trim()) loadMyTeam();
-  });
   document.getElementById('my-team-id').addEventListener('keydown', e => {
     if (e.key === 'Enter') loadMyTeam();
   });
