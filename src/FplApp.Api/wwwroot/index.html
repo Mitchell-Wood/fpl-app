@@ -696,6 +696,7 @@
     </div>
     <nav class="tabs">
       <button data-panel="my-team" class="active">My Team</button>
+      <button data-panel="squad-builder">Squad Builder</button>
       <button data-panel="lineups">Predicted Lineups</button>
       <button data-panel="recommendations">Recommendations</button>
       <button data-panel="fixtures">Fixtures</button>
@@ -861,9 +862,10 @@
   <section id="my-team" class="panel active">
     <h2 class="section-heading">My Team</h2>
     <p class="subtitle" style="margin-top:-8px">
-      Enter your FPL team ID to see your squad with flags for injuries, poor form, and tough upcoming
-      fixtures. Find your ID in the URL when viewing your team on the FPL site, e.g.
-      fantasy.premierleague.com/entry/<strong>1234567</strong>/event/1.
+      Enter your FPL team ID to plan your next gameweek — a recommended starting XI and captain
+      picked from your existing 15, a captaincy ranking, and transfer ideas — all while that
+      gameweek's deadline is still open. Find your ID in the URL when viewing your team on the FPL
+      site, e.g. fantasy.premierleague.com/entry/<strong>1234567</strong>/event/1.
     </p>
     <div class="controls">
       <input id="my-team-id" type="text" inputmode="numeric" placeholder="Team ID, e.g. 1234567" style="min-width:180px">
@@ -904,7 +906,7 @@
       </p>
       <div class="controls" style="margin-top:0;">
         <label class="inline-label" for="transfer-fixture-weeks">Plan ahead
-          <input id="transfer-fixture-weeks" type="number" min="1" max="20" value="5">
+          <input id="transfer-fixture-weeks" type="number" min="1" max="20" value="1">
           gameweeks
         </label>
         <label class="inline-label" for="transfer-free-count">Free transfers available
@@ -927,6 +929,7 @@
             <th class="num">Cost</th>
             <th class="num">Form</th>
             <th class="num">Points</th>
+            <th class="num" title="Projected points for the next gameweek — what the recommended lineup above is based on">xPts (next GW)</th>
             <th>Upcoming fixtures</th>
             <th>Flags</th>
           </tr>
@@ -935,14 +938,17 @@
       </table>
     </div>
 
-    <h3 class="section-heading" style="font-size:0.95rem;">Squad builder</h3>
-    <p class="muted" style="font-size:0.82rem;margin:-6px 0 10px;">
+  </section>
+
+  <section id="squad-builder" class="panel">
+    <h2 class="section-heading">Squad Builder</h2>
+    <p class="subtitle" style="margin-top:-8px">
       Builds the best legal 15-man squad (2 GK / 5 DEF / 5 MID / 3 FWD, max 3 players from any one
       team) under a budget — for planning a Wildcard or Free Hit from scratch, rather than one
       transfer at a time. A Free Hit only lasts a single gameweek, so it's optimized for just that
       week; a Wildcard sticks around, so pick how many gameweeks ahead to weigh fixtures over.
-      Loading a team above fills in its bank + squad value as the starting budget — edit it freely,
-      or use this without loading a team at all.
+      Loading a team on the My Team tab fills in its bank + squad value as the starting budget here —
+      edit it freely, or use this without loading a team at all.
     </p>
     <div class="controls" style="margin-top:0;">
       <label class="inline-label" for="squad-builder-budget">Budget
@@ -1965,6 +1971,7 @@
         <td class="num">£${(p.nowCost / 10).toFixed(1)}m</td>
         <td class="num">${p.form.toFixed(1)}</td>
         <td class="num">${p.totalPoints}</td>
+        <td class="num">${p.expectedPointsNextGameweek.toFixed(1)}</td>
         <td>${avgDifficultyChip(p.avgUpcomingDifficulty)}</td>
         <td>${p.flags.length ? p.flags.map(flagChip).join('') : '<span class="muted">—</span>'}</td>
       </tr>
@@ -1981,7 +1988,7 @@
     const { startersByPos, bench } = groupPlayersForPitch(picks, p => p.isBenched);
 
     const formation = `${startersByPos.DEF.length}-${startersByPos.MID.length}-${startersByPos.FWD.length}`;
-    document.getElementById('my-team-formation').textContent = `Formation: ${formation}`;
+    document.getElementById('my-team-formation').textContent = `Recommended formation: ${formation}`;
     document.getElementById('my-team-pitch').innerHTML = renderPitch(startersByPos);
     document.getElementById('my-team-bench').innerHTML = renderBenchStrip(bench);
     wrap.style.display = '';
@@ -2243,7 +2250,7 @@
   }
 
   function getTransferFixtureWeeks() {
-    return Math.min(20, Math.max(1, parseInt(document.getElementById('transfer-fixture-weeks').value, 10) || 5));
+    return Math.min(20, Math.max(1, parseInt(document.getElementById('transfer-fixture-weeks').value, 10) || 1));
   }
 
   function getFreeTransfersCount() {
@@ -2323,7 +2330,9 @@
       }
 
       statusEl.style.display = 'none';
-      summaryEl.textContent = `${data.teamName} (${data.managerName}) — ${data.points} pts this GW `
+      const targetEvent = state.bootstrap.events.find(e => e.id === data.targetEventId);
+      summaryEl.textContent = `${data.teamName} (${data.managerName}) — recommended lineup for `
+        + `${targetEvent ? targetEvent.name : 'the next gameweek'} `
         + `· Bank: £${data.bank.toFixed(1)}m · Squad value: £${data.value.toFixed(1)}m`;
       setSquadBuilderBudget(data.bank + data.value);
       renderMyTeamPitch(data.picks);

@@ -36,6 +36,7 @@ builder.Services.AddSingleton<CaptaincyService>();
 builder.Services.AddSingleton<PriceChangeWatchService>();
 builder.Services.AddSingleton<TransferPlannerService>();
 builder.Services.AddSingleton<SquadBuilderService>();
+builder.Services.AddSingleton<LineupOptimizerService>();
 
 var app = builder.Build();
 
@@ -90,7 +91,7 @@ app.MapGet("/api/player-recommendations", async (int? elementType, int? count, i
     })
     .WithName("GetPlayerRecommendations");
 
-app.MapGet("/api/my-team", async (int teamId, int eventId, IFplDataService fplDataService, SquadAnalysisService squadAnalysisService, CancellationToken cancellationToken) =>
+app.MapGet("/api/my-team", async (int teamId, int eventId, IFplDataService fplDataService, SquadAnalysisService squadAnalysisService, LineupOptimizerService lineupOptimizerService, CancellationToken cancellationToken) =>
     {
         var entry = await fplDataService.GetEntryAsync(teamId, cancellationToken);
         if (entry is null)
@@ -116,16 +117,34 @@ app.MapGet("/api/my-team", async (int teamId, int eventId, IFplDataService fplDa
         var fixtures = await fplDataService.GetFixturesAsync(cancellationToken);
         var squad = squadAnalysisService.AnalyzeSquad(bootstrap, fixtures, picks);
 
+        // Recommend a starting XI/captain for the next gameweek (the one whose deadline hasn't
+        // passed yet) rather than describing the already-locked lineup for eventId — by the time
+        // picks are public, it's too late to change that gameweek's team anyway.
+        var targetEventId = bootstrap.Events.FirstOrDefault(e => e.IsNext)?.Id ?? eventId;
+        var recommendation = lineupOptimizerService.OptimizeLineup(bootstrap, fixtures, picks, targetEventId);
+        foreach (var pick in squad)
+        {
+            if (!recommendation.ByPlayerId.TryGetValue(pick.PlayerId, out var rec))
+            {
+                continue;
+            }
+            pick.IsBenched = !rec.IsStarting;
+            pick.IsCaptain = rec.IsCaptain;
+            pick.IsViceCaptain = rec.IsViceCaptain;
+            pick.ExpectedPointsNextGameweek = rec.ExpectedPoints;
+        }
+
         return Results.Ok(new
         {
             teamId,
             teamName = entry.Name,
             managerName,
             eventId,
+            targetEventId,
+            formation = recommendation.Formation,
             available = true,
             bank = picks.EntryHistory.Bank / 10.0,
             value = picks.EntryHistory.Value / 10.0,
-            points = picks.EntryHistory.Points,
             picks = squad,
         });
     })

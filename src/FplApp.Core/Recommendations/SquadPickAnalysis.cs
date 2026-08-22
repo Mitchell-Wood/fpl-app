@@ -16,6 +16,9 @@ public class SquadPickAnalysis
     public int TotalPoints { get; set; }
     public double AvgUpcomingDifficulty { get; set; }
 
+    /// <summary>Projected points for the next gameweek, used to recommend a starting XI/captain.</summary>
+    public double ExpectedPointsNextGameweek { get; set; }
+
     /// <summary>Human-readable flags, e.g. "Injured", "Poor recent form", "Tough fixtures ahead".</summary>
     public List<string> Flags { get; set; } = [];
 }
