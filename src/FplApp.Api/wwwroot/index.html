@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -273,18 +273,6 @@
     opacity: 1;
     background: var(--row-hover);
     color: var(--text-primary);
-  }
-  .demo-badge {
-    display: inline-block;
-    font-size: 0.68rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    padding: 1px 6px;
-    border-radius: 4px;
-    background: var(--gridline);
-    color: var(--text-secondary);
-    margin-left: 6px;
   }
   .plan-tag {
     display: inline-block;
@@ -871,7 +859,6 @@
       <input id="my-team-id" type="text" inputmode="numeric" placeholder="Team ID, e.g. 1234567" style="min-width:180px">
       <select id="my-team-gameweek"></select>
       <button id="my-team-load" type="button">Load team</button>
-      <button id="my-team-demo" type="button" class="secondary">Try with demo data</button>
     </div>
     <div id="my-team-status" class="status-msg" style="display:none"></div>
     <div id="my-team-summary" class="subtitle"></div>
@@ -1019,6 +1006,7 @@
             <th>Manager</th>
             <th class="num">GW Points</th>
             <th class="num">Total Points</th>
+            <th class="num" title="Starting XI players whose fixture(s) haven't finished yet this gameweek — a double gameweek counts twice">Left to Play</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -1146,7 +1134,7 @@
     myTeamLoaded: false,
     miniLeaguesLoaded: false,
     miniLeague: { leagueId: null, page: 1 },
-    myTeam: null, // { mode: 'real', teamId, eventId } or { mode: 'demo', picks, bankTenths }
+    myTeam: null, // { teamId, eventId }
   };
 
   const DIFFICULTY_LABELS = { 1: 'Very easy', 2: 'Easy', 3: 'Medium', 4: 'Hard', 5: 'Very hard' };
@@ -1953,12 +1941,15 @@
   function initMyTeamGameweekFilter() {
     const select = document.getElementById('my-team-gameweek');
     const events = state.bootstrap.events;
+    const hasCurrent = events.some(e => e.is_current);
     select.innerHTML = '';
     for (const e of events) {
       const opt = document.createElement('option');
       opt.value = e.id;
       opt.textContent = e.name + (e.is_next ? ' (next)' : e.is_current ? ' (current)' : '');
-      if (e.is_next || e.is_current) opt.selected = true;
+      // Default to the manager's current, locked-in squad (picks aren't public for a gameweek
+      // until its deadline passes, so "next" has nothing to show until it becomes "current").
+      if (hasCurrent ? e.is_current : e.is_next) opt.selected = true;
       select.appendChild(opt);
     }
     if (!select.value && events.length) select.value = events[0].id;
@@ -2143,8 +2134,8 @@
     statusEl.classList.remove('error');
     statusEl.style.display = '';
 
-    if (state.myTeam?.mode !== 'real') {
-      statusEl.textContent = 'Bench Boost planning needs a real loaded team (not demo data), since it fetches your live squad and bank.';
+    if (!state.myTeam) {
+      statusEl.textContent = 'Load your team first, since Bench Boost planning needs your live squad and bank.';
       statusEl.classList.add('error');
       return;
     }
@@ -2550,7 +2541,7 @@
       renderMyTeamRows(data.picks);
       tableWrap.style.display = '';
       renderChipStrategy(data.picks);
-      state.myTeam = { mode: 'real', teamId, eventId };
+      state.myTeam = { teamId, eventId };
 
       if (captainRes.ok) {
         const captainData = await captainRes.json();
@@ -2571,315 +2562,6 @@
       statusEl.classList.add('error');
       statusEl.style.display = '';
     }
-  }
-
-  // ---- My Team demo data ----
-  // Builds a sample squad from real, currently-loaded player data (no team ID / network call
-  // needed) so the My Team tab's layout can be previewed any time — handy pre-season, before any
-  // real team has public picks. Mirrors the shapes SquadAnalysisService/CaptaincyService/
-  // TransferPlannerService return so it can reuse the normal render functions unchanged.
-
-  function buildDemoSquad() {
-    const squadSlots = { 1: 2, 2: 5, 3: 5, 4: 3 };
-    const starterSlots = { 1: 1, 2: 4, 3: 4, 4: 2 };
-    const squadPlayers = [];
-    const starterIds = new Set();
-    for (const elementType of [1, 2, 3, 4]) {
-      const group = state.bootstrap.elements
-        .filter(p => p.element_type === elementType && p.status === 'a')
-        .slice()
-        .sort((a, b) => b.total_points - a.total_points)
-        .slice(0, squadSlots[elementType]);
-      squadPlayers.push(...group);
-      group.slice(0, starterSlots[elementType]).forEach(p => starterIds.add(p.id));
-    }
-
-    const starters = squadPlayers.filter(p => starterIds.has(p.id)).sort((a, b) => b.total_points - a.total_points);
-    const captainId = starters[0]?.id;
-    const viceCaptainId = starters[1]?.id;
-
-    const difficultyByTeam = avgUpcomingDifficultyByTeam(5);
-    const seasonStarted = state.fixtures.some(f => f.finished);
-
-    const picks = squadPlayers.map(p => {
-      const form = parseFloat(p.form) || 0;
-      const avgDifficulty = difficultyByTeam.get(p.team) ?? 3.0;
-      const flags = [];
-      if (p.status !== 'a') {
-        const suffix = p.news ? ` — ${p.news}` : '';
-        flags.push(`${{ i: 'Injured', s: 'Suspended', d: 'Doubtful' }[p.status] || 'Unavailable'}${suffix}`);
-      } else if (p.chance_of_playing_next_round != null && p.chance_of_playing_next_round < 100) {
-        flags.push(`Doubtful (${p.chance_of_playing_next_round}% chance of playing)`);
-      }
-      if (seasonStarted && form < 2.0) flags.push('Poor recent form');
-      if (avgDifficulty > 3.5) flags.push('Tough fixtures ahead');
-
-      return {
-        playerId: p.id,
-        webName: p.web_name,
-        teamName: teamName(p.team),
-        elementType: p.element_type,
-        isCaptain: p.id === captainId,
-        isViceCaptain: p.id === viceCaptainId,
-        isBenched: !starterIds.has(p.id),
-        nowCost: p.now_cost,
-        form,
-        totalPoints: p.total_points,
-        avgUpcomingDifficulty: Math.round(avgDifficulty * 100) / 100,
-        flags,
-      };
-    });
-
-    const bankTenths = 5;
-    const value = picks.reduce((sum, p) => sum + p.nowCost, 0) + bankTenths;
-    return { picks, bankTenths, value };
-  }
-
-  function buildDemoCaptainSuggestions(picks) {
-    const elementsById = new Map(state.bootstrap.elements.map(p => [p.id, p]));
-    const nextEvent = state.bootstrap.events.find(e => !e.finished) || state.bootstrap.events[0];
-    if (!nextEvent) return [];
-
-    const captainPick = picks.find(p => p.isCaptain);
-    const viceCaptainPick = picks.find(p => p.isViceCaptain);
-
-    return picks
-      .filter(pick => !pick.isBenched && pick.elementType !== 1)
-      .map(pick => {
-        const player = elementsById.get(pick.playerId);
-        const teamFixtures = player
-          ? state.fixtures.filter(f => f.event === nextEvent.id && (f.team_h === player.team || f.team_a === player.team))
-          : [];
-        if (!player || !teamFixtures.length) return null;
-
-        const effectiveForm = pick.form > 0 ? pick.form : (parseFloat(player.points_per_game) || 0);
-        let expectedPoints = 0;
-        const fixtures = teamFixtures.map(f => {
-          const isHome = f.team_h === player.team;
-          const difficulty = isHome ? f.team_h_difficulty : f.team_a_difficulty;
-          expectedPoints += effectiveForm * ((6 - difficulty) / 3);
-          return { opponent: teamName(isHome ? f.team_a : f.team_h), venue: isHome ? 'H' : 'A', difficulty };
-        });
-
-        return {
-          webName: pick.webName,
-          teamName: pick.teamName,
-          isCurrentCaptain: pick.playerId === captainPick?.playerId,
-          isCurrentViceCaptain: pick.playerId === viceCaptainPick?.playerId,
-          expectedPoints,
-          fixtures,
-          note: teamFixtures.length > 1 ? 'Double gameweek' : null,
-        };
-      })
-      .filter(Boolean)
-      .sort((a, b) => b.expectedPoints - a.expectedPoints)
-      .slice(0, 5);
-  }
-
-  // Mirrors PlayerRecommendationService.Score: form and FPL's own next-gameweek expected-points
-  // estimate (ep_next) as the two leading signals, points-per-cost as a smaller tiebreaker, scaled
-  // by upcoming fixture ease over the chosen lookahead window.
-  function scoreCandidate(p, difficultyByTeam) {
-    const form = parseFloat(p.form) || 0;
-    const expectedPointsNext = parseFloat(p.ep_next) || 0;
-    const costInMillions = p.now_cost / 10;
-    if (costInMillions <= 0) return 0;
-    const valuePerCost = p.total_points / costInMillions;
-    const baseScore = (form * 2) + (expectedPointsNext * 2) + valuePerCost;
-    const avgDifficulty = difficultyByTeam.get(p.team) ?? 3.0;
-    const fixtureFactor = (6 - avgDifficulty) / 3;
-    return baseScore * fixtureFactor;
-  }
-
-  // Ranks every squad player's best affordable replacement by projected points gain, best first —
-  // including negative-gain entries (a player already better than anything affordable in their
-  // price bracket), so the displayed list can always show at least 5 ideas. Mirrors
-  // TransferPlannerService.ComputeCandidateSuggestions.
-  function computeDemoCandidateSuggestions(picks, bankTenths, fixtureWeeks) {
-    const squadIds = new Set(picks.map(p => p.playerId));
-    const elementsById = new Map(state.bootstrap.elements.map(p => [p.id, p]));
-    const difficultyByTeam = avgUpcomingDifficultyByTeam(fixtureWeeks);
-    const rawDifficultyByTeam = rawUpcomingDifficultiesByTeam(fixtureWeeks);
-
-    const results = [];
-    for (const pick of picks) {
-      const currentPlayer = elementsById.get(pick.playerId);
-      if (!currentPlayer) continue;
-      const budgetAvailable = bankTenths + pick.nowCost;
-      const candidates = state.bootstrap.elements
-        .filter(p => p.element_type === pick.elementType && !squadIds.has(p.id) && p.status === 'a' && p.now_cost <= budgetAvailable)
-        .sort((a, b) => scoreCandidate(b, difficultyByTeam) - scoreCandidate(a, difficultyByTeam))
-        .slice(0, 3);
-      if (!candidates.length) continue;
-
-      const pointsGain = estimateProjectedPoints(candidates[0], rawDifficultyByTeam) - estimateProjectedPoints(currentPlayer, rawDifficultyByTeam);
-      results.push({ pick, candidates, budgetAvailable, pointsGain });
-    }
-    results.sort((a, b) => b.pointsGain - a.pointsGain);
-    return results;
-  }
-
-  function mapDemoSuggestion(s) {
-    return {
-      outPlayerId: s.pick.playerId,
-      outWebName: s.pick.webName,
-      outTeamName: s.pick.teamName,
-      outFlags: s.pick.flags,
-      budgetAvailable: s.budgetAvailable,
-      expectedPointsGain: Math.round(s.pointsGain * 100) / 100,
-      candidates: s.candidates.map(p => ({
-        webName: p.web_name,
-        teamName: teamName(p.team),
-        nowCost: p.now_cost,
-        form: parseFloat(p.form) || 0,
-        totalPoints: p.total_points,
-      })),
-    };
-  }
-
-  function buildDemoTransferSuggestions(picks, bankTenths, fixtureWeeks) {
-    return computeDemoCandidateSuggestions(picks, bankTenths, fixtureWeeks).slice(0, 5).map(mapDemoSuggestion);
-  }
-
-  // Mirrors TransferPlannerService.BuildTransferPlan: greedily takes the biggest-points-gain
-  // transfers first as long as they fit a shared budget pool (bank plus proceeds from transfers
-  // already picked), up to the number of free transfers available, then flags the next-best
-  // remaining transfer as a "worth a hit?" option.
-  function buildDemoTransferPlan(picks, bankTenths, fixtureWeeks, freeTransfersAvailable) {
-    const ranked = computeDemoCandidateSuggestions(picks, bankTenths, fixtureWeeks);
-    let pool = bankTenths;
-    const plan = {
-      freeTransfersAvailable,
-      freeTransfersUsed: 0,
-      freeTransfersToBank: freeTransfersAvailable,
-      recommendedTransfers: [],
-      totalExpectedPointsGain: 0,
-      hitCandidate: null,
-      hitCandidateNetGain: null,
-      hitWorthIt: false,
-    };
-
-    for (const candidate of ranked) {
-      if (candidate.pointsGain <= 0) continue; // never recommend a transfer projected to lose points
-
-      const bestIn = candidate.candidates[0];
-      const netCost = bestIn.now_cost - candidate.pick.nowCost;
-      if (netCost > pool) continue;
-
-      if (plan.recommendedTransfers.length < freeTransfersAvailable) {
-        pool -= netCost;
-        plan.recommendedTransfers.push(mapDemoSuggestion(candidate));
-        plan.totalExpectedPointsGain += candidate.pointsGain;
-      } else if (!plan.hitCandidate) {
-        plan.hitCandidate = mapDemoSuggestion(candidate);
-        plan.hitCandidateNetGain = Math.round((candidate.pointsGain - 4) * 100) / 100;
-        plan.hitWorthIt = candidate.pointsGain > 4;
-        break;
-      }
-    }
-
-    plan.freeTransfersUsed = plan.recommendedTransfers.length;
-    plan.freeTransfersToBank = freeTransfersAvailable - plan.freeTransfersUsed;
-    plan.totalExpectedPointsGain = Math.round(plan.totalExpectedPointsGain * 100) / 100;
-    return plan;
-  }
-
-  // Mirrors TransferPlannerService.SuggestFundedUpgrade: find the best pair of (slight downgrade,
-  // funded-by-it upgrade) across the squad, where the upgrade candidate genuinely needed the
-  // downgrade's freed-up money to be affordable.
-  function buildDemoFundedUpgrade(picks, bankTenths, fixtureWeeks) {
-    const squadIds = new Set(picks.map(p => p.playerId));
-    const elementsById = new Map(state.bootstrap.elements.map(p => [p.id, p]));
-    const difficultyByTeam = avgUpcomingDifficultyByTeam(fixtureWeeks);
-    const rawDifficultyByTeam = rawUpcomingDifficultiesByTeam(fixtureWeeks);
-
-    const bestCandidate = (elementType, maxCost) => state.bootstrap.elements
-      .filter(p => p.element_type === elementType && !squadIds.has(p.id) && p.status === 'a' && p.now_cost <= maxCost)
-      .sort((a, b) => scoreCandidate(b, difficultyByTeam) - scoreCandidate(a, difficultyByTeam))[0] || null;
-
-    let best = null;
-    let bestNetGain = 0;
-
-    for (const downgradeFrom of picks) {
-      const downgradeFromPlayer = elementsById.get(downgradeFrom.playerId);
-      if (!downgradeFromPlayer) continue;
-      const downgradeTo = bestCandidate(downgradeFrom.elementType, downgradeFrom.nowCost - 1);
-      if (!downgradeTo) continue;
-      const moneySaved = downgradeFrom.nowCost - downgradeTo.now_cost;
-      if (moneySaved <= 0) continue;
-      const downgradeScoreDelta = scoreCandidate(downgradeTo, difficultyByTeam) - scoreCandidate(downgradeFromPlayer, difficultyByTeam);
-
-      for (const upgradeFrom of picks) {
-        if (upgradeFrom.playerId === downgradeFrom.playerId) continue;
-        const upgradeFromPlayer = elementsById.get(upgradeFrom.playerId);
-        if (!upgradeFromPlayer) continue;
-        const standaloneBudget = bankTenths + upgradeFrom.nowCost;
-        const fundedBudget = standaloneBudget + moneySaved;
-        const upgradeTo = bestCandidate(upgradeFrom.elementType, fundedBudget);
-        if (!upgradeTo || upgradeTo.now_cost <= standaloneBudget) continue;
-
-        const upgradeScoreDelta = scoreCandidate(upgradeTo, difficultyByTeam) - scoreCandidate(upgradeFromPlayer, difficultyByTeam);
-        const netGain = downgradeScoreDelta + upgradeScoreDelta;
-        if (netGain <= bestNetGain) continue;
-
-        bestNetGain = netGain;
-        const netPointsGain = (estimateProjectedPoints(downgradeTo, rawDifficultyByTeam) - estimateProjectedPoints(downgradeFromPlayer, rawDifficultyByTeam))
-          + (estimateProjectedPoints(upgradeTo, rawDifficultyByTeam) - estimateProjectedPoints(upgradeFromPlayer, rawDifficultyByTeam));
-
-        best = {
-          moneySaved,
-          netExpectedPointsGain: Math.round(netPointsGain * 100) / 100,
-          downgrade: {
-            outWebName: downgradeFrom.webName, outTeamName: downgradeFrom.teamName, outNowCost: downgradeFrom.nowCost,
-            inWebName: downgradeTo.web_name, inTeamName: teamName(downgradeTo.team), inNowCost: downgradeTo.now_cost,
-          },
-          upgrade: {
-            outWebName: upgradeFrom.webName, outTeamName: upgradeFrom.teamName, outNowCost: upgradeFrom.nowCost,
-            inWebName: upgradeTo.web_name, inTeamName: teamName(upgradeTo.team), inNowCost: upgradeTo.now_cost,
-          },
-        };
-      }
-    }
-
-    return best;
-  }
-
-  function renderDemoTransferSection(picks, bankTenths) {
-    const fixtureWeeks = getTransferFixtureWeeks();
-    const freeTransfers = getFreeTransfersCount();
-    const suggestions = buildDemoTransferSuggestions(picks, bankTenths, fixtureWeeks);
-    const fundedUpgrade = buildDemoFundedUpgrade(picks, bankTenths, fixtureWeeks);
-    const plan = buildDemoTransferPlan(picks, bankTenths, fixtureWeeks, freeTransfers);
-    renderTransferPlan(plan);
-    renderTransferSuggestions(suggestions, plan);
-    renderFundedUpgrade(fundedUpgrade);
-    updateTransferSectionVisibility(suggestions.length > 0, !!fundedUpgrade, true);
-  }
-
-  function loadDemoMyTeam() {
-    if (!state.bootstrap || !state.fixtures) return;
-
-    const summaryEl = document.getElementById('my-team-summary');
-    const tableWrap = document.getElementById('my-team-table-wrap');
-
-    document.getElementById('my-team-status').style.display = 'none';
-    document.getElementById('captaincy-section').style.display = 'none';
-    document.getElementById('chip-strategy-section').style.display = 'none';
-    document.getElementById('transfer-suggestions-section').style.display = 'none';
-
-    const { picks, bankTenths, value } = buildDemoSquad();
-    state.myTeam = { mode: 'demo', picks, bankTenths };
-
-    summaryEl.innerHTML = `Sample Squad (Demo Manager) — 0 pts this GW `
-      + `&middot; Bank: £${(bankTenths / 10).toFixed(1)}m &middot; Squad value: £${(value / 10).toFixed(1)}m`
-      + `<span class="demo-badge">Demo data</span>`;
-    setSquadBuilderBudget((bankTenths + value) / 10);
-    renderMyTeamPitch(picks);
-    renderMyTeamRows(picks);
-    tableWrap.style.display = '';
-    renderChipStrategy(picks);
-    renderCaptaincy(buildDemoCaptainSuggestions(picks));
-    renderDemoTransferSection(picks, bankTenths);
   }
 
   // ---- Mini-Leagues ----
@@ -2952,7 +2634,7 @@
     const loadMoreWrap = document.getElementById('ml-load-more-wrap');
 
     state.miniLeague = { leagueId, page };
-    if (!append) tbody.innerHTML = `<tr><td colspan="5" class="muted">Loading&hellip;</td></tr>`;
+    if (!append) tbody.innerHTML = `<tr><td colspan="6" class="muted">Loading&hellip;</td></tr>`;
 
     try {
       const res = await fetch(`/api/league-standings?leagueId=${leagueId}&page=${page}`);
@@ -2966,13 +2648,14 @@
           <td>${escapeHtml(r.playerName)}</td>
           <td class="num">${r.eventTotal}</td>
           <td class="num">${r.total}</td>
+          <td class="num">${r.fixturesLeft ?? '—'}</td>
         </tr>
       `).join('');
 
       if (append) {
         tbody.insertAdjacentHTML('beforeend', rowsHtml);
       } else {
-        tbody.innerHTML = rowsHtml || `<tr><td colspan="5" class="muted">No standings yet for this league (usually empty until a gameweek has been scored).</td></tr>`;
+        tbody.innerHTML = rowsHtml || `<tr><td colspan="6" class="muted">No standings yet for this league (usually empty until a gameweek has been scored).</td></tr>`;
       }
       standingsWrap.style.display = '';
       loadMoreWrap.style.display = data.hasNext ? '' : 'none';
@@ -2982,7 +2665,7 @@
           parseInt(tr.dataset.entry, 10), tr.dataset.teamName, tr.dataset.managerName));
       });
     } catch (err) {
-      if (!append) tbody.innerHTML = `<tr><td colspan="5" class="muted">Could not load standings: ${escapeHtml(err.message)}</td></tr>`;
+      if (!append) tbody.innerHTML = `<tr><td colspan="6" class="muted">Could not load standings: ${escapeHtml(err.message)}</td></tr>`;
     }
   }
 
@@ -3197,7 +2880,6 @@
   document.getElementById('rec-fixture-weeks').addEventListener('input', renderRecommendations);
   document.getElementById('price-watch-count').addEventListener('input', renderPriceWatch);
   document.getElementById('my-team-load').addEventListener('click', loadMyTeam);
-  document.getElementById('my-team-demo').addEventListener('click', loadDemoMyTeam);
   document.getElementById('squad-builder-build').addEventListener('click', buildSquad);
   document.getElementById('bb-plan-build').addEventListener('click', buildBenchBoostPlan);
   document.querySelectorAll('input[name="squad-builder-chip"]').forEach(radio => radio.addEventListener('change', () => {
@@ -3211,11 +2893,7 @@
   });
   function onTransferControlsChanged() {
     if (!state.myTeam) return;
-    if (state.myTeam.mode === 'real') {
-      loadTransferSuggestions(state.myTeam.teamId, state.myTeam.eventId);
-    } else {
-      renderDemoTransferSection(state.myTeam.picks, state.myTeam.bankTenths);
-    }
+    loadTransferSuggestions(state.myTeam.teamId, state.myTeam.eventId);
   }
   document.getElementById('transfer-fixture-weeks').addEventListener('input', onTransferControlsChanged);
   document.getElementById('transfer-free-count').addEventListener('input', onTransferControlsChanged);

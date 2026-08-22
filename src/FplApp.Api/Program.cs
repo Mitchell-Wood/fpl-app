@@ -147,7 +147,12 @@ app.MapGet("/api/captain-suggestions", async (int teamId, int eventId, IFplDataS
 
         var bootstrap = await fplDataService.GetBootstrapStaticAsync(cancellationToken);
         var fixtures = await fplDataService.GetFixturesAsync(cancellationToken);
-        var suggestions = captaincyService.SuggestCaptains(bootstrap, fixtures, picks, eventId);
+
+        // Captaincy only matters for a gameweek whose deadline hasn't passed yet, so score against
+        // the next upcoming gameweek's fixtures rather than the (already-locked) squad's own one —
+        // otherwise "suggestions" would just describe a captain choice it's too late to change.
+        var targetEventId = bootstrap.Events.FirstOrDefault(e => e.IsNext)?.Id ?? eventId;
+        var suggestions = captaincyService.SuggestCaptains(bootstrap, fixtures, picks, targetEventId);
 
         return Results.Ok(new { teamId, eventId, available = true, suggestions });
     })
@@ -208,6 +213,8 @@ app.MapGet("/api/my-leagues", async (int teamId, IFplDataService fplDataService,
     })
     .WithName("GetMyLeagues");
 
+const int FixturesLeftMaxLeagueSize = 20;
+
 app.MapGet("/api/league-standings", async (int leagueId, int? page, IFplDataService fplDataService, CancellationToken cancellationToken) =>
     {
         var standings = await fplDataService.GetLeagueStandingsAsync(leagueId, page ?? 1, cancellationToken);
@@ -216,13 +223,34 @@ app.MapGet("/api/league-standings", async (int leagueId, int? page, IFplDataServ
             return Results.NotFound(new { message = "No league found with that ID." });
         }
 
+        var rows = standings.Standings.Results;
+
+        // Fixtures-remaining needs one extra FPL API call per manager (there's no bulk picks
+        // endpoint), so it's only worth the round-trips for small leagues you can eyeball at a glance.
+        Dictionary<int, int>? fixturesLeftByEntry = null;
+        if (rows.Count > 0 && rows.Count <= FixturesLeftMaxLeagueSize)
+        {
+            var bootstrap = await fplDataService.GetBootstrapStaticAsync(cancellationToken);
+            var currentEventId = bootstrap.Events.FirstOrDefault(e => e.IsCurrent)?.Id;
+            if (currentEventId is { } eventId)
+            {
+                var fixtures = await fplDataService.GetFixturesAsync(cancellationToken);
+                var picksByEntry = await Task.WhenAll(
+                    rows.Select(async r => (r.Entry, Picks: await fplDataService.GetPicksAsync(r.Entry, eventId, cancellationToken))));
+
+                fixturesLeftByEntry = picksByEntry
+                    .Where(p => p.Picks is not null)
+                    .ToDictionary(p => p.Entry, p => FixturesRemainingCalculator.CountRemaining(bootstrap, fixtures, p.Picks!, eventId));
+            }
+        }
+
         return Results.Ok(new
         {
             leagueId,
             leagueName = standings.League.Name,
             hasNext = standings.Standings.HasNext,
             page = standings.Standings.Page,
-            results = standings.Standings.Results.Select(r => new
+            results = rows.Select(r => new
             {
                 entry = r.Entry,
                 entryName = r.EntryName,
@@ -231,6 +259,7 @@ app.MapGet("/api/league-standings", async (int leagueId, int? page, IFplDataServ
                 lastRank = r.LastRank,
                 total = r.Total,
                 eventTotal = r.EventTotal,
+                fixturesLeft = fixturesLeftByEntry != null && fixturesLeftByEntry.TryGetValue(r.Entry, out var left) ? (int?)left : null,
             }),
         });
     })
