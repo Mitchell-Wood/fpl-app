@@ -231,6 +231,7 @@ app.MapGet("/api/league-standings", async (int leagueId, int? page, IFplDataServ
         // can eyeball at a glance.
         Dictionary<int, int>? fixturesLeftByEntry = null;
         Dictionary<int, Dictionary<string, string>>? chipStatusByEntry = null;
+        Dictionary<int, int>? estimatedFreeTransfersByEntry = null;
         if (rows.Count > 0 && rows.Count <= FixturesLeftMaxLeagueSize)
         {
             var bootstrap = await fplDataService.GetBootstrapStaticAsync(cancellationToken);
@@ -253,6 +254,10 @@ app.MapGet("/api/league-standings", async (int leagueId, int? page, IFplDataServ
                     .ToDictionary(p => p.Entry, p => FixturesRemainingCalculator.CountRemaining(bootstrap, fixtures, p.Picks!, eventId, minutesByElementId));
 
                 chipStatusByEntry = perEntryData.ToDictionary(p => p.Entry, p => BuildChipStatus(p.Picks?.ActiveChip, p.History?.Chips, eventId));
+
+                estimatedFreeTransfersByEntry = perEntryData
+                    .Where(p => p.History is not null)
+                    .ToDictionary(p => p.Entry, p => FreeTransferEstimator.EstimateAvailable(p.History!.Current, p.History!.Chips));
             }
         }
 
@@ -272,6 +277,7 @@ app.MapGet("/api/league-standings", async (int leagueId, int? page, IFplDataServ
                 total = r.Total,
                 eventTotal = r.EventTotal,
                 fixturesLeft = fixturesLeftByEntry != null && fixturesLeftByEntry.TryGetValue(r.Entry, out var left) ? (int?)left : null,
+                estimatedFreeTransfers = estimatedFreeTransfersByEntry != null && estimatedFreeTransfersByEntry.TryGetValue(r.Entry, out var freeTransfers) ? (int?)freeTransfers : null,
                 chips = chipStatusByEntry != null && chipStatusByEntry.TryGetValue(r.Entry, out var chipStatus) ? chipStatus : null,
             }),
         });
