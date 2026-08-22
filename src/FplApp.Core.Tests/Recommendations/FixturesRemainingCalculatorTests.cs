@@ -47,6 +47,50 @@ public class FixturesRemainingCalculatorTests
     }
 
     [Fact]
+    public void CountRemaining_IncludesBenchedPlayers_WhenBenchBoostIsActive()
+    {
+        var starter = MakePlayer(1, team: 1);
+        var benched = MakePlayer(2, team: 3);
+        var bootstrap = MakeBootstrap(starter, benched);
+        var fixtures = new List<Fixture>
+        {
+            new() { Event = EventId, TeamH = 1, TeamA = 2, FinishedProvisional = false },
+            new() { Event = EventId, TeamH = 3, TeamA = 4, FinishedProvisional = false },
+        };
+        var picks = new TeamPicks
+        {
+            ActiveChip = "bboost",
+            Picks = [MakePick(starter, 1), MakePick(benched, 12)],
+        };
+
+        var result = FixturesRemainingCalculator.CountRemaining(bootstrap, fixtures, picks, EventId);
+
+        Assert.Equal(2, result);
+    }
+
+    [Fact]
+    public void CountRemaining_ExcludesBenchedPlayers_WhenAnotherChipIsActive()
+    {
+        var starter = MakePlayer(1, team: 1);
+        var benched = MakePlayer(2, team: 3);
+        var bootstrap = MakeBootstrap(starter, benched);
+        var fixtures = new List<Fixture>
+        {
+            new() { Event = EventId, TeamH = 1, TeamA = 2, FinishedProvisional = false },
+            new() { Event = EventId, TeamH = 3, TeamA = 4, FinishedProvisional = false },
+        };
+        var picks = new TeamPicks
+        {
+            ActiveChip = "3xc",
+            Picks = [MakePick(starter, 1), MakePick(benched, 12)],
+        };
+
+        var result = FixturesRemainingCalculator.CountRemaining(bootstrap, fixtures, picks, EventId);
+
+        Assert.Equal(1, result);
+    }
+
+    [Fact]
     public void CountRemaining_ExcludesAFinishedFixture()
     {
         var starter = MakePlayer(1, team: 1);

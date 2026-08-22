@@ -4,10 +4,14 @@ namespace FplApp.Core.Recommendations;
 
 public static class FixturesRemainingCalculator
 {
+    private const string BenchBoostChipName = "bboost";
+
     /// <summary>
-    /// Counts how many fixture-legs a manager's starting XI (position 1-11) still has left to play
-    /// in the given gameweek. A player whose team has two fixtures in the gameweek (a double
-    /// gameweek) counts twice; a player whose team doesn't play at all counts zero.
+    /// Counts how many fixture-legs a manager's squad still has left to play in the given gameweek.
+    /// Normally only the starting XI (position 1-11) counts, since the bench doesn't score — but
+    /// with Bench Boost active the whole 15 counts, since the bench scores too that gameweek. A
+    /// player whose team has two fixtures (a double gameweek) counts twice; a player whose team
+    /// doesn't play at all counts zero.
     /// </summary>
     public static int CountRemaining(BootstrapStatic bootstrap, IReadOnlyList<Fixture> fixtures, TeamPicks picks, int eventId)
     {
@@ -22,8 +26,11 @@ public static class FixturesRemainingCalculator
         // so it's the accurate signal for whether a fixture is actually still to be played.
         var eventFixtures = fixtures.Where(f => f.Event == eventId && !f.FinishedProvisional).ToList();
 
+        var isBenchBoosted = picks.ActiveChip == BenchBoostChipName;
+        var relevantPicks = isBenchBoosted ? picks.Picks : picks.Picks.Where(p => p.Position <= 11);
+
         var count = 0;
-        foreach (var pick in picks.Picks.Where(p => p.Position <= 11))
+        foreach (var pick in relevantPicks)
         {
             if (!playersById.TryGetValue(pick.Element, out var player))
             {
