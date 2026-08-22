@@ -89,4 +89,11 @@ public class FplDataService : IFplDataService
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<TeamHistoryResponse>(cancellationToken);
     }
+
+    public async Task<EventLiveResponse> GetEventLiveAsync(int eventId, CancellationToken cancellationToken = default)
+    {
+        var client = _httpClientFactory.CreateClient(HttpClientName);
+        var result = await client.GetFromJsonAsync<EventLiveResponse>($"event/{eventId}/live/", cancellationToken);
+        return result ?? new EventLiveResponse();
+    }
 }

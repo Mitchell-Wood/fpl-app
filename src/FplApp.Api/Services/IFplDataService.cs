@@ -25,4 +25,7 @@ public interface IFplDataService
 
     /// <summary>Gets a manager's season-to-date gameweek history and chips played (always public).</summary>
     Task<TeamHistoryResponse?> GetHistoryAsync(int teamId, CancellationToken cancellationToken = default);
+
+    /// <summary>Gets every player's live stats (minutes played, points, etc.) for one gameweek.</summary>
+    Task<EventLiveResponse> GetEventLiveAsync(int eventId, CancellationToken cancellationToken = default);
 }

@@ -235,12 +235,14 @@ app.MapGet("/api/league-standings", async (int leagueId, int? page, IFplDataServ
             if (currentEventId is { } eventId)
             {
                 var fixtures = await fplDataService.GetFixturesAsync(cancellationToken);
+                var eventLive = await fplDataService.GetEventLiveAsync(eventId, cancellationToken);
+                var minutesByElementId = eventLive.Elements.ToDictionary(e => e.Id, e => e.Stats.Minutes);
                 var picksByEntry = await Task.WhenAll(
                     rows.Select(async r => (r.Entry, Picks: await fplDataService.GetPicksAsync(r.Entry, eventId, cancellationToken))));
 
                 fixturesLeftByEntry = picksByEntry
                     .Where(p => p.Picks is not null)
-                    .ToDictionary(p => p.Entry, p => FixturesRemainingCalculator.CountRemaining(bootstrap, fixtures, p.Picks!, eventId));
+                    .ToDictionary(p => p.Entry, p => FixturesRemainingCalculator.CountRemaining(bootstrap, fixtures, p.Picks!, eventId, minutesByElementId));
             }
         }
 
