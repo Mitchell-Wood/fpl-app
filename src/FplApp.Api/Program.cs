@@ -1,5 +1,6 @@
 using FplApp.Api.Services;
 using FplApp.Api.Services.FotMob;
+using FplApp.Core.Models;
 using FplApp.Core.Recommendations;
 using Microsoft.AspNetCore.HttpOverrides;
 
@@ -225,9 +226,11 @@ app.MapGet("/api/league-standings", async (int leagueId, int? page, IFplDataServ
 
         var rows = standings.Standings.Results;
 
-        // Fixtures-remaining needs one extra FPL API call per manager (there's no bulk picks
-        // endpoint), so it's only worth the round-trips for small leagues you can eyeball at a glance.
+        // Fixtures-remaining and chip status each need one extra FPL API call per manager (there's
+        // no bulk picks/history endpoint), so it's only worth the round-trips for small leagues you
+        // can eyeball at a glance.
         Dictionary<int, int>? fixturesLeftByEntry = null;
+        Dictionary<int, Dictionary<string, string>>? chipStatusByEntry = null;
         if (rows.Count > 0 && rows.Count <= FixturesLeftMaxLeagueSize)
         {
             var bootstrap = await fplDataService.GetBootstrapStaticAsync(cancellationToken);
@@ -237,12 +240,19 @@ app.MapGet("/api/league-standings", async (int leagueId, int? page, IFplDataServ
                 var fixtures = await fplDataService.GetFixturesAsync(cancellationToken);
                 var eventLive = await fplDataService.GetEventLiveAsync(eventId, cancellationToken);
                 var minutesByElementId = eventLive.Elements.ToDictionary(e => e.Id, e => e.Stats.Minutes);
-                var picksByEntry = await Task.WhenAll(
-                    rows.Select(async r => (r.Entry, Picks: await fplDataService.GetPicksAsync(r.Entry, eventId, cancellationToken))));
+                var perEntryData = await Task.WhenAll(rows.Select(async r =>
+                {
+                    var picksTask = fplDataService.GetPicksAsync(r.Entry, eventId, cancellationToken);
+                    var historyTask = fplDataService.GetHistoryAsync(r.Entry, cancellationToken);
+                    await Task.WhenAll(picksTask, historyTask);
+                    return (r.Entry, Picks: picksTask.Result, History: historyTask.Result);
+                }));
 
-                fixturesLeftByEntry = picksByEntry
+                fixturesLeftByEntry = perEntryData
                     .Where(p => p.Picks is not null)
                     .ToDictionary(p => p.Entry, p => FixturesRemainingCalculator.CountRemaining(bootstrap, fixtures, p.Picks!, eventId, minutesByElementId));
+
+                chipStatusByEntry = perEntryData.ToDictionary(p => p.Entry, p => BuildChipStatus(p.Picks?.ActiveChip, p.History?.Chips, eventId));
             }
         }
 
@@ -262,10 +272,38 @@ app.MapGet("/api/league-standings", async (int leagueId, int? page, IFplDataServ
                 total = r.Total,
                 eventTotal = r.EventTotal,
                 fixturesLeft = fixturesLeftByEntry != null && fixturesLeftByEntry.TryGetValue(r.Entry, out var left) ? (int?)left : null,
+                chips = chipStatusByEntry != null && chipStatusByEntry.TryGetValue(r.Entry, out var chipStatus) ? chipStatus : null,
             }),
         });
     })
     .WithName("GetLeagueStandings");
+
+// Maps each of the four chips to "active" (being played this gameweek), "used" (already played in
+// some other gameweek), or "available" (not yet played).
+static Dictionary<string, string> BuildChipStatus(string? activeChip, IReadOnlyList<ChipPlay>? chipHistory, int eventId)
+{
+    var usedElsewhere = (chipHistory ?? [])
+        .Where(c => c.Event != eventId)
+        .Select(c => c.Name)
+        .ToHashSet();
+
+    string StatusFor(string chipName)
+    {
+        if (activeChip == chipName)
+        {
+            return "active";
+        }
+        return usedElsewhere.Contains(chipName) ? "used" : "available";
+    }
+
+    return new Dictionary<string, string>
+    {
+        ["tc"] = StatusFor("3xc"),
+        ["bb"] = StatusFor("bboost"),
+        ["fh"] = StatusFor("freehit"),
+        ["wc"] = StatusFor("wildcard"),
+    };
+}
 
 app.MapGet("/api/manager-history", async (int teamId, IFplDataService fplDataService, CancellationToken cancellationToken) =>
     {
