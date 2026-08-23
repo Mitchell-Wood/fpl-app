@@ -844,11 +844,11 @@
             <th>Kickoff</th>
             <th>Home</th>
             <th>Difficulty</th>
-            <th title="Estimated clean sheet chance, derived from goals scored/conceded this season">Home CS%</th>
+            <th title="Estimated clean sheet chance, from this season's goals scored/conceded blended with preseason strength ratings">Home CS%</th>
             <th></th>
             <th>Away</th>
             <th>Difficulty</th>
-            <th title="Estimated clean sheet chance, derived from goals scored/conceded this season">Away CS%</th>
+            <th title="Estimated clean sheet chance, from this season's goals scored/conceded blended with preseason strength ratings">Away CS%</th>
             <th>Score</th>
           </tr>
         </thead>
@@ -903,7 +903,7 @@
             <th class="num">Selected</th>
             <th class="num">xG</th>
             <th class="num">xA</th>
-            <th class="num" title="Estimated clean sheet chance, derived from goals scored/conceded this season">Est. CS%</th>
+            <th class="num" title="Estimated clean sheet chance, from this season's goals scored/conceded blended with preseason strength ratings">Est. CS%</th>
             <th>Upcoming fixtures</th>
           </tr>
         </thead>
@@ -1202,8 +1202,68 @@
   // team's actual goals-scored/conceded rate *split by home/away* (since home advantage is real and
   // teams score/concede at different rates home vs away), combined via a standard attack-strength-
   // vs-defence-weakness model, converted to a probability with the Poisson distribution. It's a
-  // genuine estimate, not an official figure, and returns null (shown as "—") until there's a
-  // finished fixture to base it on.
+  // genuine estimate, not an official figure.
+  //
+  // With only a handful of games played, a team's own goals record is a tiny, noisy sample — one
+  // fluky 4-0 flatters (or wrecks) a rate for weeks. So each observed rate is blended with a prior
+  // derived from FPL's own preseason strength ratings (bootstrap `strength_attack_*` /
+  // `strength_defence_*`, home/away split), weighted by how many games the observed rate is actually
+  // based on — the prior dominates at 0 games and fades out as more of the season is played.
+
+  // Long-run Premier League scoring averages, home vs away — real home advantage baked into the
+  // prior itself, rather than relying on shrinkage alone to discover it from a handful of games.
+  const PRIOR_HOME_GOALS = 1.5;
+  const PRIOR_AWAY_GOALS = 1.15;
+  const SHRINKAGE_GAMES = 4; // games played at which a team's own observed rate and its prior carry equal weight
+
+  // The league-wide home/away scoring average feeds every fixture's calculation (it's the shared
+  // normalizing denominator, not a per-team figure), so a small sample skews the whole table at
+  // once rather than just one team's row — needs much slower shrinkage than a team's own rate.
+  const LEAGUE_AVG_SHRINKAGE_GAMES = 40;
+
+  let cachedTeamPriorRates = null;
+
+  function leagueAvgStrength(teams, field) {
+    const values = teams.map(t => t[field]).filter(v => v != null && v > 0);
+    return values.length ? values.reduce((sum, v) => sum + v, 0) / values.length : null;
+  }
+
+  // Converts FPL's relative preseason strength ratings into an absolute goals-per-game prior for
+  // each team, home/away split, anchored to the real PRIOR_HOME_GOALS/PRIOR_AWAY_GOALS averages.
+  // Defence is inverted (higher strength = fewer goals conceded) and uses the *opponent's* venue
+  // baseline — a team's home defence is compared against what an average away side scores.
+  function teamPriorRates() {
+    if (cachedTeamPriorRates) return cachedTeamPriorRates;
+    const teams = state.bootstrap.teams;
+    const avgAttackHome = leagueAvgStrength(teams, 'strength_attack_home');
+    const avgAttackAway = leagueAvgStrength(teams, 'strength_attack_away');
+    const avgDefenceHome = leagueAvgStrength(teams, 'strength_defence_home');
+    const avgDefenceAway = leagueAvgStrength(teams, 'strength_defence_away');
+
+    const map = new Map();
+    for (const t of teams) {
+      map.set(t.id, {
+        home: {
+          attack: avgAttackHome ? PRIOR_HOME_GOALS * (t.strength_attack_home / avgAttackHome) : PRIOR_HOME_GOALS,
+          defence: avgDefenceHome ? PRIOR_AWAY_GOALS * (avgDefenceHome / t.strength_defence_home) : PRIOR_AWAY_GOALS,
+        },
+        away: {
+          attack: avgAttackAway ? PRIOR_AWAY_GOALS * (t.strength_attack_away / avgAttackAway) : PRIOR_AWAY_GOALS,
+          defence: avgDefenceAway ? PRIOR_HOME_GOALS * (avgDefenceAway / t.strength_defence_away) : PRIOR_HOME_GOALS,
+        },
+      });
+    }
+    cachedTeamPriorRates = map;
+    return map;
+  }
+
+  // Shrinks an observed per-game rate toward a prior based on sample size — full prior at 0 games
+  // played, half-and-half at the given shrinkage constant, mostly-observed well beyond that.
+  function blendWithPrior(observedRate, gamesPlayed, priorRate, shrinkageGames = SHRINKAGE_GAMES) {
+    if (observedRate == null || gamesPlayed <= 0) return priorRate;
+    const weight = gamesPlayed / (gamesPlayed + shrinkageGames);
+    return (weight * observedRate) + ((1 - weight) * priorRate);
+  }
 
   function computeTeamGoalRecords() {
     // teamId -> { home: {for,against,games}, away: {for,against,games}, overall: {for,against,games} }
@@ -1247,6 +1307,7 @@
       home: homeGames > 0 ? homeGoals / homeGames : null,
       away: awayGames > 0 ? awayGoals / awayGames : null,
       overall: overallGames > 0 ? overallGoals / overallGames : null,
+      homeGames, awayGames, overallGames,
     };
   }
 
@@ -1258,20 +1319,46 @@
     return null;
   }
 
+  // Games actually behind a venueRate() call — the shrinkage sample size, mirroring its own fallback.
+  function venueGames(venueRecord, overallRecord) {
+    if (venueRecord && venueRecord.games > 0) return venueRecord.games;
+    if (overallRecord && overallRecord.games > 0) return overallRecord.games;
+    return 0;
+  }
+
   function estimateCleanSheetChance(records, teamId, opponentId, teamIsHome) {
+    const priors = teamPriorRates();
+    const teamPrior = priors.get(teamId);
+    const opponentPrior = priors.get(opponentId);
+    if (!teamPrior || !opponentPrior) return null;
+
     const team = records.get(teamId);
     const opponent = records.get(opponentId);
-    if (!team || !opponent) return null;
 
-    const teamDefenceRate = venueRate(teamIsHome ? team.home : team.away, team.overall, 'against');
-    const opponentAttackRate = venueRate(teamIsHome ? opponent.away : opponent.home, opponent.overall, 'for');
-    if (teamDefenceRate == null || opponentAttackRate == null) return null;
+    const teamVenue = team ? (teamIsHome ? team.home : team.away) : null;
+    const teamOverall = team ? team.overall : null;
+    const teamDefenceRate = blendWithPrior(
+      venueRate(teamVenue, teamOverall, 'against'),
+      venueGames(teamVenue, teamOverall),
+      teamIsHome ? teamPrior.home.defence : teamPrior.away.defence);
 
-    // Normalize the opponent's attack rate against the league's average scoring rate in that
-    // same venue context (home teams typically outscore away teams league-wide).
+    const opponentVenue = opponent ? (teamIsHome ? opponent.away : opponent.home) : null;
+    const opponentOverall = opponent ? opponent.overall : null;
+    const opponentAttackRate = blendWithPrior(
+      venueRate(opponentVenue, opponentOverall, 'for'),
+      venueGames(opponentVenue, opponentOverall),
+      teamIsHome ? opponentPrior.away.attack : opponentPrior.home.attack);
+
+    // Normalize the opponent's attack rate against the league's average scoring rate in that same
+    // venue context (home teams typically outscore away teams league-wide) — blended with the real
+    // long-run home/away averages, and much slower to shift than a single team's own rate since this
+    // one number affects every fixture's calculation at once.
     const avgs = leagueVenueAverages(records);
-    const leagueAvg = (teamIsHome ? avgs.away : avgs.home) ?? avgs.overall;
-    if (!leagueAvg || leagueAvg <= 0) return null;
+    const leagueAvg = blendWithPrior(
+      teamIsHome ? avgs.away : avgs.home,
+      teamIsHome ? avgs.awayGames : avgs.homeGames,
+      teamIsHome ? PRIOR_AWAY_GOALS : PRIOR_HOME_GOALS,
+      LEAGUE_AVG_SHRINKAGE_GAMES);
 
     const expectedGoalsConceded = teamDefenceRate * (opponentAttackRate / leagueAvg);
     return Math.exp(-expectedGoalsConceded);
@@ -1279,7 +1366,7 @@
 
   function csChip(chance) {
     if (chance == null) return '<span class="muted">—</span>';
-    return `<span title="Estimated from home/away-split goals scored/conceded so far this season">${(chance * 100).toFixed(0)}%</span>`;
+    return `<span title="Estimated from home/away-split goals scored/conceded so far this season, blended with preseason strength ratings early on">${(chance * 100).toFixed(0)}%</span>`;
   }
 
   function avgUpcomingCleanSheetChanceByTeam(weeks) {
