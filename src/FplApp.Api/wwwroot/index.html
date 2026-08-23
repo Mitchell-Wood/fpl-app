@@ -186,10 +186,12 @@
   header .subtitle { color: rgba(255,255,255,0.66); }
   nav.tabs {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 2px;
     border-bottom: 1px solid rgba(255,255,255,0.14);
     margin-top: 6px;
+    overflow-x: auto;
+    scrollbar-width: thin;
   }
   nav.tabs button {
     appearance: none;
@@ -199,9 +201,11 @@
     border-radius: 8px 8px 0 0;
     color: rgba(255,255,255,0.68);
     font: inherit;
-    font-size: 0.875rem;
+    font-size: 0.8rem;
     font-weight: 600;
-    padding: 10px 16px;
+    padding: 10px 11px;
+    white-space: nowrap;
+    flex-shrink: 0;
     cursor: pointer;
     transition: background-color 0.12s ease, color 0.12s ease;
   }
@@ -705,7 +709,7 @@
   }
   @media (max-width: 560px) {
     body { font-size: 14px; }
-    nav.tabs button { padding: 9px 12px; font-size: 0.82rem; }
+    nav.tabs button { padding: 9px 10px; font-size: 0.78rem; }
     .header-inner { padding-top: 18px; }
   }
 </style>
