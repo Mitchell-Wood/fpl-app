@@ -1182,7 +1182,11 @@
       return records.get(id);
     };
     for (const f of state.fixtures) {
-      if (!f.finished || f.team_h_score == null || f.team_a_score == null) continue;
+      // FPL flips `finished` to true only after bonus points/stats are officially confirmed,
+      // which can lag hours behind full time — `finished_provisional` (set once 90+ minutes are
+      // played) plus real scores is enough to trust for a goals-based estimate, and unlike
+      // `started` it won't pull in a still-live match's in-progress scoreline.
+      if (!f.finished_provisional || f.team_h_score == null || f.team_a_score == null) continue;
 
       const home = ensure(f.team_h);
       home.home.for += f.team_h_score; home.home.against += f.team_a_score; home.home.games += 1;
