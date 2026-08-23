@@ -28,4 +28,7 @@ public interface IFplDataService
 
     /// <summary>Gets every player's live stats (minutes played, points, etc.) for one gameweek.</summary>
     Task<EventLiveResponse> GetEventLiveAsync(int eventId, CancellationToken cancellationToken = default);
+
+    /// <summary>Gets every transfer a manager has made this season (always public), newest first.</summary>
+    Task<List<TeamTransfer>> GetTransfersAsync(int teamId, CancellationToken cancellationToken = default);
 }

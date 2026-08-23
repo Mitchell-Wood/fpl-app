@@ -420,6 +420,23 @@ app.MapGet("/api/manager-history", async (int teamId, IFplDataService fplDataSer
     })
     .WithName("GetManagerHistory");
 
+app.MapGet("/api/manager-transfers", async (int teamId, IFplDataService fplDataService, CancellationToken cancellationToken) =>
+    {
+        var transfers = await fplDataService.GetTransfersAsync(teamId, cancellationToken);
+        return Results.Ok(transfers
+            .OrderByDescending(t => t.Time)
+            .Select(t => new
+            {
+                @event = t.Event,
+                elementIn = t.ElementIn,
+                elementInCost = t.ElementInCost,
+                elementOut = t.ElementOut,
+                elementOutCost = t.ElementOutCost,
+                time = t.Time,
+            }));
+    })
+    .WithName("GetManagerTransfers");
+
 app.MapGet("/api/wildcard-squad", async (int? teamId, int? eventId, int? budget, int? fixtureLookaheadWeeks, IFplDataService fplDataService, SquadBuilderService squadBuilderService, CancellationToken cancellationToken) =>
     {
         var lookahead = fixtureLookaheadWeeks ?? 1;

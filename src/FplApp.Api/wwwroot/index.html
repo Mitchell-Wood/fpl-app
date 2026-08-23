@@ -2755,6 +2755,27 @@
     }
   }
 
+  function transferDetailHtml(transfers) {
+    if (!transfers || !transfers.length) {
+      return '<span class="muted">No transfer details available.</span>';
+    }
+    return transfers.map(t => {
+      const pIn = state.bootstrap.elements.find(p => p.id === t.elementIn);
+      const pOut = state.bootstrap.elements.find(p => p.id === t.elementOut);
+      const inLabel = pIn ? `${escapeHtml(pIn.web_name)} <span class="muted">(${escapeHtml(teamName(pIn.team))})</span>` : `Player #${t.elementIn}`;
+      const outLabel = pOut ? `${escapeHtml(pOut.web_name)} <span class="muted">(${escapeHtml(teamName(pOut.team))})</span>` : `Player #${t.elementOut}`;
+      return `
+        <div style="padding:3px 0;">
+          <span style="color:var(--status-critical);font-weight:700;font-size:0.72rem;">OUT</span>
+          ${outLabel} <span class="muted">£${(t.elementOutCost / 10).toFixed(1)}m</span>
+          &rarr;
+          <span style="color:var(--status-good);font-weight:700;font-size:0.72rem;">IN</span>
+          ${inLabel} <span class="muted">£${(t.elementInCost / 10).toFixed(1)}m</span>
+        </div>
+      `;
+    }).join('');
+  }
+
   async function loadManagerHistory(teamId, teamName, managerName) {
     const panel = document.getElementById('ml-detail-panel');
     const content = document.getElementById('ml-detail-content');
@@ -2762,23 +2783,39 @@
     content.innerHTML = `<p class="muted">Loading ${escapeHtml(teamName)}&hellip;</p>`;
 
     try {
-      const res = await fetch(`/api/manager-history?teamId=${teamId}`);
-      if (!res.ok) throw new Error('manager-history ' + res.status);
-      const data = await res.json();
+      const [historyRes, transfersRes] = await Promise.all([
+        fetch(`/api/manager-history?teamId=${teamId}`),
+        fetch(`/api/manager-transfers?teamId=${teamId}`),
+      ]);
+      if (!historyRes.ok) throw new Error('manager-history ' + historyRes.status);
+      const data = await historyRes.json();
+
+      const transfersByEvent = new Map();
+      if (transfersRes.ok) {
+        const transfers = await transfersRes.json();
+        for (const t of transfers) {
+          if (!transfersByEvent.has(t.event)) transfersByEvent.set(t.event, []);
+          transfersByEvent.get(t.event).push(t);
+        }
+      }
 
       const chipsText = data.chips.length
         ? data.chips.map(c => `${escapeHtml(CHIP_DISPLAY_NAMES[c.name] || c.name)} (GW${c.event})`).join(', ')
         : '<span class="muted">None played yet</span>';
 
-      const gwRows = [...data.gameweeks].reverse().map(gw => `
-        <tr>
-          <td>GW${gw.event}</td>
-          <td class="num">${gw.points}</td>
-          <td class="num">${gw.eventTransfers}</td>
-          <td class="num">${gw.eventTransfersCost > 0 ? '−' + gw.eventTransfersCost : '—'}</td>
-          <td class="num">${gw.pointsOnBench}</td>
-        </tr>
-      `).join('');
+      const gwRows = [...data.gameweeks].reverse().map(gw => {
+        const hasTransfers = gw.eventTransfers > 0;
+        return `
+          <tr${hasTransfers ? ` class="ml-gw-row" data-event="${gw.event}" style="cursor:pointer"` : ''}>
+            <td>GW${gw.event}${hasTransfers ? ' <span class="muted" style="font-size:0.7rem;">(click for detail)</span>' : ''}</td>
+            <td class="num">${gw.points}</td>
+            <td class="num">${gw.eventTransfers}</td>
+            <td class="num">${gw.eventTransfersCost > 0 ? '−' + gw.eventTransfersCost : '—'}</td>
+            <td class="num">${gw.pointsOnBench}</td>
+          </tr>
+          ${hasTransfers ? `<tr class="ml-gw-detail" data-event-detail="${gw.event}" style="display:none"><td colspan="5"></td></tr>` : ''}
+        `;
+      }).join('');
 
       content.innerHTML = `
         <h3 class="section-heading" style="font-size:0.95rem;margin-top:0;">${escapeHtml(teamName)} <span class="muted">(${escapeHtml(managerName)})</span></h3>
@@ -2798,6 +2835,23 @@
           </div>
         ` : '<p class="muted">No completed gameweeks yet this season.</p>'}
       `;
+
+      content.querySelectorAll('tr.ml-gw-row').forEach(tr => {
+        tr.addEventListener('click', () => {
+          const detailRow = content.querySelector(`tr[data-event-detail="${tr.dataset.event}"]`);
+          if (!detailRow) return;
+          if (detailRow.style.display !== 'none') {
+            detailRow.style.display = 'none';
+            return;
+          }
+          const td = detailRow.querySelector('td');
+          if (!td.dataset.rendered) {
+            td.innerHTML = transferDetailHtml(transfersByEvent.get(parseInt(tr.dataset.event, 10)));
+            td.dataset.rendered = '1';
+          }
+          detailRow.style.display = '';
+        });
+      });
     } catch (err) {
       content.innerHTML = `<p class="muted">Could not load history: ${escapeHtml(err.message)}</p>`;
     }

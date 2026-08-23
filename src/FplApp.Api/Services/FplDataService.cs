@@ -96,4 +96,11 @@ public class FplDataService : IFplDataService
         var result = await client.GetFromJsonAsync<EventLiveResponse>($"event/{eventId}/live/", cancellationToken);
         return result ?? new EventLiveResponse();
     }
+
+    public async Task<List<TeamTransfer>> GetTransfersAsync(int teamId, CancellationToken cancellationToken = default)
+    {
+        var client = _httpClientFactory.CreateClient(HttpClientName);
+        var result = await client.GetFromJsonAsync<List<TeamTransfer>>($"entry/{teamId}/transfers/", cancellationToken);
+        return result ?? [];
+    }
 }
