@@ -485,6 +485,28 @@
     background: var(--gridline);
     color: var(--text-secondary);
   }
+  .bonus-badge {
+    display: inline-block;
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: var(--status-good);
+    color: #ffffff;
+    margin-left: 5px;
+  }
+  .bps-list {
+    column-count: 2;
+    column-gap: 24px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    font-size: 0.875rem;
+  }
+  .bps-list li {
+    padding: 3px 0;
+    break-inside: avoid;
+  }
   .pitch {
     background: repeating-linear-gradient(180deg, var(--pitch-2) 0, var(--pitch-2) 44px, var(--pitch-1) 44px, var(--pitch-1) 88px);
     border-radius: var(--radius-card);
@@ -716,6 +738,7 @@
       <button data-panel="lineups">Predicted Lineups</button>
       <button data-panel="recommendations">Recommendations</button>
       <button data-panel="fixtures">Fixtures</button>
+      <button data-panel="bonus-points">Bonus Points</button>
       <button data-panel="players">Players</button>
       <button data-panel="price-watch">Price Watch</button>
       <button data-panel="mini-leagues">Mini-Leagues</button>
@@ -832,6 +855,20 @@
         <tbody></tbody>
       </table>
     </div>
+  </section>
+
+  <section id="bonus-points" class="panel">
+    <h2 class="section-heading">Bonus points system</h2>
+    <p class="subtitle" style="margin-top:-8px">
+      Live bonus points system (BPS) rankings per fixture, updated as each match is played — same
+      as the official site's fixture page. The 3 highest-BPS players get 3 bonus points, the next 2,
+      the next 1; tied players share the same bonus, and a tie "uses up" the slot(s) it occupies (e.g.
+      two players tied for top get 3 each and nobody gets 2).
+    </p>
+    <div class="controls">
+      <select id="bonus-gameweek"></select>
+    </div>
+    <div id="bonus-points-list"></div>
   </section>
 
   <section id="recommendations" class="panel">
@@ -1281,6 +1318,7 @@
       statusEl.style.display = 'none';
       initPositionFilter();
       initGameweekFilter();
+      initBonusGameweekFilter();
       initLineupGameweekFilter();
       initRecPositionFilter();
       initMyTeamGameweekFilter();
@@ -1288,6 +1326,7 @@
       renderPlayers();
       renderTeams();
       renderFixtures();
+      renderBonusPoints();
       renderTicker();
       renderBlankDoubleGameweeks();
       renderRecommendations();
@@ -2656,6 +2695,105 @@
     } catch (err) {
       container.innerHTML = `<p class="status-msg error">Could not load lineups: ${escapeHtml(err.message)}</p>`;
     }
+  }
+
+  // ---- Bonus points ----
+  // The 3 highest-BPS players in a fixture get 3/2/1 bonus points respectively. Ties share the same
+  // bonus and "use up" however many slots they occupy — e.g. two players tied for top both get 3 and
+  // nobody gets 2; this is standard competition ("1224") ranking capped to the top 3 distinct values.
+
+  function initBonusGameweekFilter() {
+    const select = document.getElementById('bonus-gameweek');
+    const events = state.bootstrap.events;
+    select.innerHTML = '';
+    for (const e of events) {
+      const opt = document.createElement('option');
+      opt.value = e.id;
+      opt.textContent = e.name + (e.is_current ? ' (current)' : e.is_next ? ' (next)' : '');
+      if (e.is_current) opt.selected = true;
+      select.appendChild(opt);
+    }
+    if (!select.value && events.length) {
+      select.value = (events.find(e => e.is_next) || events[0]).id;
+    }
+    select.addEventListener('change', renderBonusPoints);
+  }
+
+  function computeFixtureBonus(fixture) {
+    const bpsStat = (fixture.stats || []).find(s => s.identifier === 'bps');
+    if (!bpsStat) return [];
+
+    const entries = [...(bpsStat.h || []), ...(bpsStat.a || [])]
+      .map(e => ({ element: e.element, value: e.value }))
+      .sort((a, b) => b.value - a.value);
+
+    const result = [];
+    let rank = 1;
+    let i = 0;
+    while (i < entries.length) {
+      let j = i;
+      while (j < entries.length && entries[j].value === entries[i].value) j++;
+      const bonus = rank <= 3 ? 4 - rank : 0;
+      for (let k = i; k < j; k++) result.push({ ...entries[k], bonus });
+      rank += (j - i);
+      i = j;
+    }
+    return result;
+  }
+
+  function bonusMatchStatus(fixture) {
+    if (fixture.finished) return ['Final', 'lineup-status-confirmed'];
+    if (fixture.finished_provisional) return ['Awaiting confirmation', 'lineup-status-lastKnownLineup'];
+    if (fixture.started) return ['Live', 'lineup-status-predicted'];
+    return ['Not started', 'lineup-status-unavailable'];
+  }
+
+  function renderBonusCard(fixture, elementsById) {
+    const kickoff = fixture.kickoff_time
+      ? new Date(fixture.kickoff_time).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+      : 'TBC';
+    const [statusLabel, statusClass] = bonusMatchStatus(fixture);
+    const score = fixture.started
+      ? `${fixture.team_h_score ?? '-'} – ${fixture.team_a_score ?? '-'}`
+      : '';
+    const header = `${escapeHtml(teamName(fixture.team_h))} v ${escapeHtml(teamName(fixture.team_a))}${score ? ' &middot; ' + score : ''}`;
+
+    const bonus = computeFixtureBonus(fixture);
+    let body;
+    if (!fixture.started) {
+      body = '<p class="muted" style="margin:0;">Match hasn\'t kicked off yet — no BPS data.</p>';
+    } else if (!bonus.length) {
+      body = '<p class="muted" style="margin:0;">No BPS data available for this match.</p>';
+    } else {
+      body = `<ul class="bps-list">${bonus.map(b => {
+        const player = elementsById.get(b.element);
+        const name = player ? escapeHtml(player.web_name) : `Player #${b.element}`;
+        const badge = b.bonus > 0 ? `<span class="bonus-badge">+${b.bonus}</span>` : '';
+        return `<li>${name} (${b.value})${badge}</li>`;
+      }).join('')}</ul>`;
+    }
+
+    return `<div class="lineup-card">
+      <div class="lineup-card-header">
+        <strong>${header}</strong>
+        <span style="display:flex;align-items:center;gap:8px;">
+          <span class="muted" style="font-size:0.8rem;">${kickoff}</span>
+          <span class="lineup-status ${statusClass}">${escapeHtml(statusLabel)}</span>
+        </span>
+      </div>
+      ${body}
+    </div>`;
+  }
+
+  function renderBonusPoints() {
+    const gw = document.getElementById('bonus-gameweek').value;
+    const container = document.getElementById('bonus-points-list');
+    if (!gw) return;
+    const rows = state.fixtures
+      .filter(f => String(f.event) === String(gw))
+      .sort((a, b) => new Date(a.kickoff_time || 0) - new Date(b.kickoff_time || 0));
+    const elementsById = new Map(state.bootstrap.elements.map(p => [p.id, p]));
+    container.innerHTML = rows.map(f => renderBonusCard(f, elementsById)).join('') || '<p class="status-msg">No fixtures this gameweek.</p>';
   }
 
   // ---- Shared helpers ----

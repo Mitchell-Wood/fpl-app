@@ -49,4 +49,33 @@ public class Fixture
 
     [JsonPropertyName("pulse_id")]
     public int PulseId { get; set; }
+
+    /// <summary>
+    /// Live/final match stats broken down by identifier (e.g. "bps", "goals_scored"), each split
+    /// into home and away scorers. Populated once a fixture has kicked off — updates in real time
+    /// during play, same as the official site.
+    /// </summary>
+    [JsonPropertyName("stats")]
+    public List<FixtureStat> Stats { get; set; } = [];
+}
+
+public class FixtureStat
+{
+    [JsonPropertyName("identifier")]
+    public string Identifier { get; set; } = "";
+
+    [JsonPropertyName("a")]
+    public List<FixtureStatValue> Away { get; set; } = [];
+
+    [JsonPropertyName("h")]
+    public List<FixtureStatValue> Home { get; set; } = [];
+}
+
+public class FixtureStatValue
+{
+    [JsonPropertyName("value")]
+    public int Value { get; set; }
+
+    [JsonPropertyName("element")]
+    public int Element { get; set; }
 }
