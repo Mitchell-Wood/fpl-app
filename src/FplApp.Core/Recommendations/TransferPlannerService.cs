@@ -247,9 +247,12 @@ public class TransferPlannerService
                 var standaloneBudget = bank + upgradeFrom.NowCost;
                 var fundedBudget = standaloneBudget + moneySaved;
 
+                // The downgrade leg already claims downgradeTo for the squad, so the upgrade leg
+                // must not be offered the same player — owning two of the same player is illegal.
+                var ownedAfterDowngrade = new HashSet<int>(ownedPlayerIds) { downgradeTo.Id };
                 var fundedCandidates = _recommendationService.RecommendPlayers(
                     bootstrap, fixtures, upgradeFrom.ElementType, 1, fixtureLookaheadWeeks,
-                    ownedPlayerIds, fundedBudget);
+                    ownedAfterDowngrade, fundedBudget);
                 if (fundedCandidates.Count == 0)
                 {
                     continue;
