@@ -1,5 +1,6 @@
 using FplApp.Api.Services;
 using FplApp.Api.Services.FotMob;
+using FplApp.Api.Services.LiveFpl;
 using FplApp.Core.Models;
 using FplApp.Core.Recommendations;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -28,8 +29,16 @@ builder.Services.AddHttpClient(FotMobLineupService.HttpClientName, client =>
     client.DefaultRequestHeaders.Referrer = new Uri("https://www.fotmob.com/");
 });
 
+builder.Services.AddHttpClient(LiveFplService.HttpClientName, client =>
+{
+    client.BaseAddress = new Uri("https://www.livefpl.net/");
+    client.DefaultRequestHeaders.UserAgent.ParseAdd(
+        "Mozilla/5.0 (compatible; FplApp/1.0; +https://github.com/)");
+});
+
 builder.Services.AddScoped<IFplDataService, FplDataService>();
 builder.Services.AddScoped<IFotMobLineupService, FotMobLineupService>();
+builder.Services.AddScoped<ILiveFplService, LiveFplService>();
 builder.Services.AddSingleton<PlayerRecommendationService>();
 builder.Services.AddSingleton<SquadAnalysisService>();
 builder.Services.AddSingleton<CaptaincyService>();
@@ -260,7 +269,7 @@ app.MapGet("/api/my-leagues", async (int teamId, IFplDataService fplDataService,
 
 const int FixturesLeftMaxLeagueSize = 20;
 
-app.MapGet("/api/league-standings", async (int leagueId, int? page, IFplDataService fplDataService, CancellationToken cancellationToken) =>
+app.MapGet("/api/league-standings", async (int leagueId, int? page, IFplDataService fplDataService, ILiveFplService liveFplService, CancellationToken cancellationToken) =>
     {
         var standings = await fplDataService.GetLeagueStandingsAsync(leagueId, page ?? 1, cancellationToken);
         if (standings is null)
@@ -270,12 +279,13 @@ app.MapGet("/api/league-standings", async (int leagueId, int? page, IFplDataServ
 
         var rows = standings.Standings.Results;
 
-        // Fixtures-remaining and chip status each need one extra FPL API call per manager (there's
-        // no bulk picks/history endpoint), so it's only worth the round-trips for small leagues you
-        // can eyeball at a glance.
+        // Fixtures-remaining, chip status and clone rating each need one extra API call per
+        // manager (there's no bulk picks/history endpoint, and livefpl.net is per-manager too),
+        // so it's only worth the round-trips for small leagues you can eyeball at a glance.
         Dictionary<int, int>? fixturesLeftByEntry = null;
         Dictionary<int, Dictionary<string, string>>? chipStatusByEntry = null;
         Dictionary<int, int>? estimatedFreeTransfersByEntry = null;
+        Dictionary<int, double>? cloneRatingByEntry = null;
         if (rows.Count > 0 && rows.Count <= FixturesLeftMaxLeagueSize)
         {
             var bootstrap = await fplDataService.GetBootstrapStaticAsync(cancellationToken);
@@ -289,8 +299,9 @@ app.MapGet("/api/league-standings", async (int leagueId, int? page, IFplDataServ
                 {
                     var picksTask = fplDataService.GetPicksAsync(r.Entry, eventId, cancellationToken);
                     var historyTask = fplDataService.GetHistoryAsync(r.Entry, cancellationToken);
-                    await Task.WhenAll(picksTask, historyTask);
-                    return (r.Entry, Picks: picksTask.Result, History: historyTask.Result);
+                    var cloneRatingTask = liveFplService.GetCloneRatingPercentAsync(r.Entry, cancellationToken);
+                    await Task.WhenAll(picksTask, historyTask, cloneRatingTask);
+                    return (r.Entry, Picks: picksTask.Result, History: historyTask.Result, CloneRating: cloneRatingTask.Result);
                 }));
 
                 fixturesLeftByEntry = perEntryData
@@ -302,6 +313,10 @@ app.MapGet("/api/league-standings", async (int leagueId, int? page, IFplDataServ
                 estimatedFreeTransfersByEntry = perEntryData
                     .Where(p => p.History is not null)
                     .ToDictionary(p => p.Entry, p => FreeTransferEstimator.EstimateAvailable(p.History!.Current, p.History!.Chips));
+
+                cloneRatingByEntry = perEntryData
+                    .Where(p => p.CloneRating is not null)
+                    .ToDictionary(p => p.Entry, p => p.CloneRating!.Value);
             }
         }
 
@@ -309,6 +324,7 @@ app.MapGet("/api/league-standings", async (int leagueId, int? page, IFplDataServ
         {
             leagueId,
             leagueName = standings.League.Name,
+            hasManagerDetail = fixturesLeftByEntry != null,
             hasNext = standings.Standings.HasNext,
             page = standings.Standings.Page,
             results = rows.Select(r => new
@@ -323,6 +339,7 @@ app.MapGet("/api/league-standings", async (int leagueId, int? page, IFplDataServ
                 fixturesLeft = fixturesLeftByEntry != null && fixturesLeftByEntry.TryGetValue(r.Entry, out var left) ? (int?)left : null,
                 estimatedFreeTransfers = estimatedFreeTransfersByEntry != null && estimatedFreeTransfersByEntry.TryGetValue(r.Entry, out var freeTransfers) ? (int?)freeTransfers : null,
                 chips = chipStatusByEntry != null && chipStatusByEntry.TryGetValue(r.Entry, out var chipStatus) ? chipStatus : null,
+                cloneRatingPercent = cloneRatingByEntry != null && cloneRatingByEntry.TryGetValue(r.Entry, out var cloneRating) ? (double?)cloneRating : null,
             }),
         });
     })

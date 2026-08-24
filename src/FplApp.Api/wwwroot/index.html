@@ -1101,9 +1101,10 @@
             <th>Manager</th>
             <th class="num">GW Points</th>
             <th class="num">Total Points</th>
-            <th class="num" title="Starting XI players whose fixture(s) haven't finished yet this gameweek — a double gameweek counts twice">Left to Play</th>
-            <th class="num" title="Estimated from public gameweek history — not an official FPL figure">Free Transfers</th>
-            <th class="num" title="TC = Triple Captain, BB = Bench Boost, FH = Free Hit, WC = Wildcard. Green = playing this gameweek, red = already used this half of the season (resets at GW20).">Chips</th>
+            <th class="num ml-detail-col" title="Starting XI players whose fixture(s) haven't finished yet this gameweek — a double gameweek counts twice">Left to Play</th>
+            <th class="num ml-detail-col" title="Estimated from public gameweek history — not an official FPL figure">Free Transfers</th>
+            <th class="num ml-detail-col" title="TC = Triple Captain, BB = Bench Boost, FH = Free Hit, WC = Wildcard. Green = playing this gameweek, red = already used this half of the season (resets at GW20).">Chips</th>
+            <th class="num ml-detail-col" title="How much of this manager's starting XI + captain is shared with other managers this gameweek, via livefpl.net. Higher = more template.">Clone %</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -2720,12 +2721,19 @@
     const loadMoreWrap = document.getElementById('ml-load-more-wrap');
 
     state.miniLeague = { leagueId, page };
-    if (!append) tbody.innerHTML = `<tr><td colspan="8" class="muted">Loading&hellip;</td></tr>`;
+    if (!append) tbody.innerHTML = `<tr><td colspan="9" class="muted">Loading&hellip;</td></tr>`;
 
     try {
       const res = await fetch(`/api/league-standings?leagueId=${leagueId}&page=${page}`);
       if (!res.ok) throw new Error('league-standings ' + res.status);
       const data = await res.json();
+
+      const detailCellsHtml = r => `
+          <td class="num">${r.fixturesLeft ?? '—'}</td>
+          <td class="num">${r.estimatedFreeTransfers ?? '—'}</td>
+          <td class="num">${renderChipsCell(r.chips)}</td>
+          <td class="num">${r.cloneRatingPercent != null ? r.cloneRatingPercent.toFixed(1) + '%' : '—'}</td>
+      `;
 
       const rowsHtml = data.results.map(r => `
         <tr style="cursor:pointer" data-entry="${r.entry}" data-team-name="${escapeHtml(r.entryName)}" data-manager-name="${escapeHtml(r.playerName)}">
@@ -2734,26 +2742,29 @@
           <td>${escapeHtml(r.playerName)}</td>
           <td class="num">${r.eventTotal}</td>
           <td class="num">${r.total}</td>
-          <td class="num">${r.fixturesLeft ?? '—'}</td>
-          <td class="num">${r.estimatedFreeTransfers ?? '—'}</td>
-          <td class="num">${renderChipsCell(r.chips)}</td>
+          ${data.hasManagerDetail ? detailCellsHtml(r) : ''}
         </tr>
       `).join('');
 
+      const colCount = data.hasManagerDetail ? 9 : 5;
       if (append) {
         tbody.insertAdjacentHTML('beforeend', rowsHtml);
       } else {
-        tbody.innerHTML = rowsHtml || `<tr><td colspan="8" class="muted">No standings yet for this league (usually empty until a gameweek has been scored).</td></tr>`;
+        tbody.innerHTML = rowsHtml || `<tr><td colspan="${colCount}" class="muted">No standings yet for this league (usually empty until a gameweek has been scored).</td></tr>`;
       }
       standingsWrap.style.display = '';
       loadMoreWrap.style.display = data.hasNext ? '' : 'none';
+      document.querySelectorAll('#ml-standings-table .ml-detail-col').forEach(th => {
+        th.style.display = data.hasManagerDetail ? '' : 'none';
+      });
 
       tbody.querySelectorAll('tr[data-entry]').forEach(tr => {
         tr.addEventListener('click', () => loadManagerHistory(
           parseInt(tr.dataset.entry, 10), tr.dataset.teamName, tr.dataset.managerName));
       });
     } catch (err) {
-      if (!append) tbody.innerHTML = `<tr><td colspan="8" class="muted">Could not load standings: ${escapeHtml(err.message)}</td></tr>`;
+      if (!append) tbody.innerHTML = `<tr><td colspan="9" class="muted">Could not load standings: ${escapeHtml(err.message)}</td></tr>`;
+      document.querySelectorAll('#ml-standings-table .ml-detail-col').forEach(th => { th.style.display = ''; });
     }
   }
 
