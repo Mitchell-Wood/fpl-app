@@ -203,6 +203,10 @@
   @media (max-width: 640px) {
     .brand-row { flex-wrap: wrap; }
     .refresh-controls { margin-left: auto; }
+    /* flex:1 + min-width:0 lets brand-lockup shrink to near-nothing instead of
+       wrapping onto its own line — give it a floor so the title/subtitle don't
+       collapse into a single-word-per-line column next to the refresh button. */
+    .brand-lockup { min-width: 200px; }
   }
   h1 {
     margin: 0 0 4px;
@@ -749,6 +753,8 @@
     body { font-size: 14px; }
     nav.tabs button { padding: 9px 10px; font-size: 0.78rem; }
     .header-inner { padding-top: 18px; }
+    h1 { font-size: 1.15rem; }
+    .subtitle { font-size: 0.78rem; }
   }
 </style>
 </head>
