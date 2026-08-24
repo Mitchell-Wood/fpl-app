@@ -286,6 +286,7 @@ app.MapGet("/api/league-standings", async (int leagueId, int? page, IFplDataServ
         Dictionary<int, Dictionary<string, string>>? chipStatusByEntry = null;
         Dictionary<int, int>? estimatedFreeTransfersByEntry = null;
         Dictionary<int, double>? cloneRatingByEntry = null;
+        Dictionary<int, double>? templateRatingByEntry = null;
         if (rows.Count > 0 && rows.Count <= FixturesLeftMaxLeagueSize)
         {
             var bootstrap = await fplDataService.GetBootstrapStaticAsync(cancellationToken);
@@ -299,9 +300,9 @@ app.MapGet("/api/league-standings", async (int leagueId, int? page, IFplDataServ
                 {
                     var picksTask = fplDataService.GetPicksAsync(r.Entry, eventId, cancellationToken);
                     var historyTask = fplDataService.GetHistoryAsync(r.Entry, cancellationToken);
-                    var cloneRatingTask = liveFplService.GetCloneRatingPercentAsync(r.Entry, cancellationToken);
-                    await Task.WhenAll(picksTask, historyTask, cloneRatingTask);
-                    return (r.Entry, Picks: picksTask.Result, History: historyTask.Result, CloneRating: cloneRatingTask.Result);
+                    var liveFplStatsTask = liveFplService.GetStatsAsync(r.Entry, cancellationToken);
+                    await Task.WhenAll(picksTask, historyTask, liveFplStatsTask);
+                    return (r.Entry, Picks: picksTask.Result, History: historyTask.Result, LiveFplStats: liveFplStatsTask.Result);
                 }));
 
                 fixturesLeftByEntry = perEntryData
@@ -315,8 +316,12 @@ app.MapGet("/api/league-standings", async (int leagueId, int? page, IFplDataServ
                     .ToDictionary(p => p.Entry, p => FreeTransferEstimator.EstimateAvailable(p.History!.Current, p.History!.Chips));
 
                 cloneRatingByEntry = perEntryData
-                    .Where(p => p.CloneRating is not null)
-                    .ToDictionary(p => p.Entry, p => p.CloneRating!.Value);
+                    .Where(p => p.LiveFplStats.CloneRatingPercent is not null)
+                    .ToDictionary(p => p.Entry, p => p.LiveFplStats.CloneRatingPercent!.Value);
+
+                templateRatingByEntry = perEntryData
+                    .Where(p => p.LiveFplStats.TemplateRatingPercent is not null)
+                    .ToDictionary(p => p.Entry, p => p.LiveFplStats.TemplateRatingPercent!.Value);
             }
         }
 
@@ -340,6 +345,7 @@ app.MapGet("/api/league-standings", async (int leagueId, int? page, IFplDataServ
                 estimatedFreeTransfers = estimatedFreeTransfersByEntry != null && estimatedFreeTransfersByEntry.TryGetValue(r.Entry, out var freeTransfers) ? (int?)freeTransfers : null,
                 chips = chipStatusByEntry != null && chipStatusByEntry.TryGetValue(r.Entry, out var chipStatus) ? chipStatus : null,
                 cloneRatingPercent = cloneRatingByEntry != null && cloneRatingByEntry.TryGetValue(r.Entry, out var cloneRating) ? (double?)cloneRating : null,
+                templateRatingPercent = templateRatingByEntry != null && templateRatingByEntry.TryGetValue(r.Entry, out var templateRating) ? (double?)templateRating : null,
             }),
         });
     })

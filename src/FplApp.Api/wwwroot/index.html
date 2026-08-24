@@ -1105,6 +1105,7 @@
             <th class="num ml-detail-col" title="Estimated from public gameweek history — not an official FPL figure">Free Transfers</th>
             <th class="num ml-detail-col" title="TC = Triple Captain, BB = Bench Boost, FH = Free Hit, WC = Wildcard. Green = playing this gameweek, red = already used this half of the season (resets at GW20).">Chips</th>
             <th class="num ml-detail-col" title="How much of this manager's starting XI + captain is shared with other managers this gameweek, via livefpl.net. Higher = more template.">Clone %</th>
+            <th class="num ml-detail-col" title="How heavy each line of your team is compared to top 10k teams">Template %</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -2721,7 +2722,7 @@
     const loadMoreWrap = document.getElementById('ml-load-more-wrap');
 
     state.miniLeague = { leagueId, page };
-    if (!append) tbody.innerHTML = `<tr><td colspan="9" class="muted">Loading&hellip;</td></tr>`;
+    if (!append) tbody.innerHTML = `<tr><td colspan="10" class="muted">Loading&hellip;</td></tr>`;
 
     try {
       const res = await fetch(`/api/league-standings?leagueId=${leagueId}&page=${page}`);
@@ -2733,6 +2734,7 @@
           <td class="num">${r.estimatedFreeTransfers ?? '—'}</td>
           <td class="num">${renderChipsCell(r.chips)}</td>
           <td class="num">${r.cloneRatingPercent != null ? r.cloneRatingPercent.toFixed(1) + '%' : '—'}</td>
+          <td class="num">${r.templateRatingPercent != null ? r.templateRatingPercent.toFixed(1) + '%' : '—'}</td>
       `;
 
       const rowsHtml = data.results.map(r => `
@@ -2746,7 +2748,7 @@
         </tr>
       `).join('');
 
-      const colCount = data.hasManagerDetail ? 9 : 5;
+      const colCount = data.hasManagerDetail ? 10 : 5;
       if (append) {
         tbody.insertAdjacentHTML('beforeend', rowsHtml);
       } else {
@@ -2763,7 +2765,7 @@
           parseInt(tr.dataset.entry, 10), tr.dataset.teamName, tr.dataset.managerName));
       });
     } catch (err) {
-      if (!append) tbody.innerHTML = `<tr><td colspan="9" class="muted">Could not load standings: ${escapeHtml(err.message)}</td></tr>`;
+      if (!append) tbody.innerHTML = `<tr><td colspan="10" class="muted">Could not load standings: ${escapeHtml(err.message)}</td></tr>`;
       document.querySelectorAll('#ml-standings-table .ml-detail-col').forEach(th => { th.style.display = ''; });
     }
   }

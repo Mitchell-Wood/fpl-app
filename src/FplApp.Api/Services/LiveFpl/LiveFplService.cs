@@ -4,9 +4,9 @@ using Microsoft.Extensions.Caching.Memory;
 namespace FplApp.Api.Services.LiveFpl;
 
 /// <summary>
-/// Reads the "clones" stat from livefpl.net's unofficial rank-tracking API. This isn't a
-/// published/documented API, so every call is defensive: any failure just means no clone
-/// rating for that manager rather than breaking the rest of the page.
+/// Reads per-manager stats from livefpl.net's unofficial rank-tracking API. This isn't a
+/// published/documented API, so every call is defensive: any failure just means no stats for
+/// that manager rather than breaking the rest of the page.
 /// </summary>
 public class LiveFplService : ILiveFplService
 {
@@ -16,7 +16,8 @@ public class LiveFplService : ILiveFplService
     // those 11 that other managers also have in their starting XI this gameweek.
     private const int StartingXiSize = 11;
 
-    private static readonly TimeSpan CloneRatingCacheDuration = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan StatsCacheDuration = TimeSpan.FromMinutes(5);
+    private static readonly LiveFplStats EmptyStats = new(null, null);
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IMemoryCache _cache;
@@ -29,11 +30,11 @@ public class LiveFplService : ILiveFplService
         _logger = logger;
     }
 
-    public async Task<double?> GetCloneRatingPercentAsync(int teamId, CancellationToken cancellationToken = default)
+    public async Task<LiveFplStats> GetStatsAsync(int teamId, CancellationToken cancellationToken = default)
     {
-        return await _cache.GetOrCreateAsync<double?>($"livefpl:clone:{teamId}", async entry =>
+        var stats = await _cache.GetOrCreateAsync($"livefpl:stats:{teamId}", async entry =>
         {
-            entry.AbsoluteExpirationRelativeToNow = CloneRatingCacheDuration;
+            entry.AbsoluteExpirationRelativeToNow = StatsCacheDuration;
 
             try
             {
@@ -41,24 +42,32 @@ public class LiveFplService : ILiveFplService
                 using var response = await client.GetAsync($"livefplapi/{teamId}", cancellationToken);
                 if (!response.IsSuccessStatusCode)
                 {
-                    return null;
+                    return EmptyStats;
                 }
 
                 using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
                 using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
-                if (!doc.RootElement.TryGetProperty("avg_similarity", out var avgSimilarityElement) ||
-                    !avgSimilarityElement.TryGetDouble(out var avgSimilarity))
-                {
-                    return null;
-                }
+                var root = doc.RootElement;
 
-                return avgSimilarity / StartingXiSize * 100;
+                double? cloneRating = root.TryGetProperty("avg_similarity", out var avgSimilarityElement) &&
+                    avgSimilarityElement.TryGetDouble(out var avgSimilarity)
+                        ? avgSimilarity / StartingXiSize * 100
+                        : null;
+
+                double? templateRating = root.TryGetProperty("template", out var templateElement) &&
+                    templateElement.TryGetDouble(out var template)
+                        ? template
+                        : null;
+
+                return new LiveFplStats(cloneRating, templateRating);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to fetch livefpl clone rating for team {TeamId}", teamId);
-                return null;
+                _logger.LogWarning(ex, "Failed to fetch livefpl stats for team {TeamId}", teamId);
+                return EmptyStats;
             }
         });
+
+        return stats ?? EmptyStats;
     }
 }
