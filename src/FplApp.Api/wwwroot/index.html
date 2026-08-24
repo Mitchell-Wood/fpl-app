@@ -975,6 +975,7 @@
     <div class="controls">
       <input id="my-team-id" type="text" inputmode="numeric" placeholder="Team ID, e.g. 1234567" style="min-width:180px">
       <button id="my-team-load" type="button">Load team</button>
+      <button id="my-team-id-mine" type="button">Winning team ID</button>
     </div>
     <div id="my-team-status" class="status-msg" style="display:none"></div>
     <div id="my-team-summary" class="subtitle"></div>
@@ -2215,6 +2216,7 @@
   // ---- My Team ----
 
   const MY_TEAM_ID_STORAGE_KEY = 'fplapp:teamId';
+  const WINNING_TEAM_ID = '59619';
 
   // The manager's current, locked-in squad — picks aren't public for a gameweek until its
   // deadline passes, so there's nothing to show yet for "next" even once it exists.
@@ -3125,6 +3127,10 @@
   }));
   document.getElementById('my-team-id').addEventListener('keydown', e => {
     if (e.key === 'Enter') loadMyTeam();
+  });
+  document.getElementById('my-team-id-mine').addEventListener('click', () => {
+    document.getElementById('my-team-id').value = WINNING_TEAM_ID;
+    loadMyTeam();
   });
   function onTransferControlsChanged() {
     if (!state.myTeam) return;

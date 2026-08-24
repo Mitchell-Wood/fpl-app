@@ -9,6 +9,15 @@ public class FplDataService : IFplDataService
     private const string BootstrapStaticCacheKey = "fpl:bootstrap-static";
     private static readonly TimeSpan BootstrapStaticCacheDuration = TimeSpan.FromMinutes(15);
 
+    // Rarely changes mid-gameweek, so cache aggressively.
+    private static readonly TimeSpan EntryCacheDuration = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan HistoryCacheDuration = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan TransfersCacheDuration = TimeSpan.FromMinutes(10);
+
+    // Moves during live matches, so keep a short leash.
+    private static readonly TimeSpan PicksCacheDuration = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan EventLiveCacheDuration = TimeSpan.FromMinutes(1);
+
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IMemoryCache _cache;
     private readonly ILogger<FplDataService> _logger;
@@ -44,26 +53,36 @@ public class FplDataService : IFplDataService
 
     public async Task<TeamEntry?> GetEntryAsync(int teamId, CancellationToken cancellationToken = default)
     {
-        var client = _httpClientFactory.CreateClient(HttpClientName);
-        var response = await client.GetAsync($"entry/{teamId}/", cancellationToken);
-        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        return await _cache.GetOrCreateAsync($"fpl:entry:{teamId}", async entry =>
         {
-            return null;
-        }
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<TeamEntry>(cancellationToken);
+            entry.AbsoluteExpirationRelativeToNow = EntryCacheDuration;
+
+            var client = _httpClientFactory.CreateClient(HttpClientName);
+            var response = await client.GetAsync($"entry/{teamId}/", cancellationToken);
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                return null;
+            }
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadFromJsonAsync<TeamEntry>(cancellationToken);
+        });
     }
 
     public async Task<TeamPicks?> GetPicksAsync(int teamId, int eventId, CancellationToken cancellationToken = default)
     {
-        var client = _httpClientFactory.CreateClient(HttpClientName);
-        var response = await client.GetAsync($"entry/{teamId}/event/{eventId}/picks/", cancellationToken);
-        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        return await _cache.GetOrCreateAsync($"fpl:picks:{teamId}:{eventId}", async entry =>
         {
-            return null;
-        }
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<TeamPicks>(cancellationToken);
+            entry.AbsoluteExpirationRelativeToNow = PicksCacheDuration;
+
+            var client = _httpClientFactory.CreateClient(HttpClientName);
+            var response = await client.GetAsync($"entry/{teamId}/event/{eventId}/picks/", cancellationToken);
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                return null;
+            }
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadFromJsonAsync<TeamPicks>(cancellationToken);
+        });
     }
 
     public async Task<LeagueStandingsResponse?> GetLeagueStandingsAsync(int leagueId, int page, CancellationToken cancellationToken = default)
@@ -80,27 +99,42 @@ public class FplDataService : IFplDataService
 
     public async Task<TeamHistoryResponse?> GetHistoryAsync(int teamId, CancellationToken cancellationToken = default)
     {
-        var client = _httpClientFactory.CreateClient(HttpClientName);
-        var response = await client.GetAsync($"entry/{teamId}/history/", cancellationToken);
-        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        return await _cache.GetOrCreateAsync($"fpl:history:{teamId}", async entry =>
         {
-            return null;
-        }
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<TeamHistoryResponse>(cancellationToken);
+            entry.AbsoluteExpirationRelativeToNow = HistoryCacheDuration;
+
+            var client = _httpClientFactory.CreateClient(HttpClientName);
+            var response = await client.GetAsync($"entry/{teamId}/history/", cancellationToken);
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                return null;
+            }
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadFromJsonAsync<TeamHistoryResponse>(cancellationToken);
+        });
     }
 
     public async Task<EventLiveResponse> GetEventLiveAsync(int eventId, CancellationToken cancellationToken = default)
     {
-        var client = _httpClientFactory.CreateClient(HttpClientName);
-        var result = await client.GetFromJsonAsync<EventLiveResponse>($"event/{eventId}/live/", cancellationToken);
-        return result ?? new EventLiveResponse();
+        var cached = await _cache.GetOrCreateAsync($"fpl:event-live:{eventId}", async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = EventLiveCacheDuration;
+
+            var client = _httpClientFactory.CreateClient(HttpClientName);
+            return await client.GetFromJsonAsync<EventLiveResponse>($"event/{eventId}/live/", cancellationToken);
+        });
+        return cached ?? new EventLiveResponse();
     }
 
     public async Task<List<TeamTransfer>> GetTransfersAsync(int teamId, CancellationToken cancellationToken = default)
     {
-        var client = _httpClientFactory.CreateClient(HttpClientName);
-        var result = await client.GetFromJsonAsync<List<TeamTransfer>>($"entry/{teamId}/transfers/", cancellationToken);
-        return result ?? [];
+        var cached = await _cache.GetOrCreateAsync($"fpl:transfers:{teamId}", async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = TransfersCacheDuration;
+
+            var client = _httpClientFactory.CreateClient(HttpClientName);
+            return await client.GetFromJsonAsync<List<TeamTransfer>>($"entry/{teamId}/transfers/", cancellationToken);
+        });
+        return cached ?? [];
     }
 }
