@@ -1103,6 +1103,7 @@
     <div class="controls">
       <input id="ml-team-id" type="text" inputmode="numeric" placeholder="Team ID, e.g. 1234567" style="min-width:180px">
       <button id="ml-load-leagues" type="button">Load leagues</button>
+      <button id="ml-team-id-mine" type="button">Winning team ID</button>
       <select id="ml-league-select" style="display:none"></select>
     </div>
     <div id="ml-status" class="status-msg" style="display:none"></div>
@@ -3168,6 +3169,10 @@
   document.getElementById('ml-load-leagues').addEventListener('click', loadMyLeagues);
   document.getElementById('ml-team-id').addEventListener('keydown', e => {
     if (e.key === 'Enter') loadMyLeagues();
+  });
+  document.getElementById('ml-team-id-mine').addEventListener('click', () => {
+    document.getElementById('ml-team-id').value = WINNING_TEAM_ID;
+    loadMyLeagues();
   });
   document.getElementById('ml-league-select').addEventListener('change', e => {
     document.getElementById('ml-detail-panel').style.display = 'none';
