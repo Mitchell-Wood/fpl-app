@@ -124,6 +124,7 @@ app.MapGet("/api/my-team", async (int teamId, int eventId, IFplDataService fplDa
 
         var bootstrap = await fplDataService.GetBootstrapStaticAsync(cancellationToken);
         var fixtures = await fplDataService.GetFixturesAsync(cancellationToken);
+        var history = await fplDataService.GetHistoryAsync(teamId, cancellationToken);
         var squad = squadAnalysisService.AnalyzeSquad(bootstrap, fixtures, picks);
 
         // Recommend a starting XI/captain for the next gameweek (the one whose deadline hasn't
@@ -161,6 +162,7 @@ app.MapGet("/api/my-team", async (int teamId, int eventId, IFplDataService fplDa
             bank = picks.EntryHistory.Bank / 10.0,
             value = picks.EntryHistory.Value / 10.0,
             picks = squad,
+            chips = BuildChipStatus(picks.ActiveChip, history?.Chips, eventId),
         });
     })
     .WithName("GetMyTeam");

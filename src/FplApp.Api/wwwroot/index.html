@@ -440,6 +440,10 @@
     font-size: 0.7rem;
     padding: 2px 7px;
   }
+  .compare-best {
+    color: var(--status-good);
+    font-weight: 800;
+  }
   .diff-blank {
     background: var(--gridline);
     color: var(--text-secondary);
@@ -833,6 +837,7 @@
       <button data-panel="fixtures">Fixtures</button>
       <button data-panel="bonus-points">Bonus Points</button>
       <button data-panel="players">Players</button>
+      <button data-panel="compare">Compare</button>
       <button data-panel="price-watch">Price Watch</button>
       <button data-panel="mini-leagues">Mini-Leagues</button>
       <button data-panel="set-pieces">Set Pieces</button>
@@ -869,6 +874,19 @@
         <tbody></tbody>
       </table>
     </div>
+  </section>
+
+  <section id="compare" class="panel">
+    <h2 class="section-heading">Compare Players</h2>
+    <p class="subtitle" style="margin-top:-8px">
+      Pick up to 3 players to see their stats side by side.
+    </p>
+    <div class="controls">
+      <select id="compare-player-1"><option value="">Player 1&hellip;</option></select>
+      <select id="compare-player-2"><option value="">Player 2&hellip;</option></select>
+      <select id="compare-player-3"><option value="">Player 3 (optional)&hellip;</option></select>
+    </div>
+    <div id="compare-content"></div>
   </section>
 
   <section id="teams" class="panel">
@@ -1029,6 +1047,25 @@
     <div id="captaincy-section" style="display:none">
       <h3 class="section-heading" style="font-size:0.95rem;margin-top:24px;">Captaincy suggestion</h3>
       <div id="captaincy-list"></div>
+    </div>
+
+    <div id="chip-advisor-section" style="display:none">
+      <h3 class="section-heading" style="font-size:0.95rem;margin-top:24px;">Chip strategy</h3>
+      <p class="muted" style="font-size:0.82rem;margin:-6px 0 6px;">
+        Timing suggestions for your unused chips, based on the blank/double gameweeks scheduled for
+        the rest of the season. A rule of thumb, not a guarantee — always sanity-check against your
+        actual squad's fixtures nearer the time.
+      </p>
+      <div id="chip-advisor-list"></div>
+    </div>
+
+    <div id="template-comparison-section" style="display:none">
+      <h3 class="section-heading" style="font-size:0.95rem;margin-top:24px;">Template comparison</h3>
+      <p class="muted" style="font-size:0.82rem;margin:-6px 0 6px;">
+        The "template" here is the most-owned player at each position across all of FPL — not just
+        the top 10k — built from each player's overall selected-by %.
+      </p>
+      <div id="template-comparison-content"></div>
     </div>
 
     <div id="transfer-suggestions-section" style="display:none">
@@ -1508,6 +1545,7 @@
       initRecPositionFilter();
       initMyTeamGameweekFilter();
       initMiniLeaguesTab();
+      initComparePanel();
       renderPlayers();
       renderTeams();
       renderFixtures();
@@ -1571,6 +1609,7 @@
       renderRecommendations();
       renderPriceWatch();
       renderSetPieces();
+      renderComparison();
       if (state.lineupsLoaded) renderLineups();
       if (state.myTeam) await loadMyTeam();
       if (state.miniLeague.leagueId) await loadLeagueStandings(state.miniLeague.leagueId, 1, false);
@@ -1797,6 +1836,85 @@
       opt.textContent = t.plural_name;
       select.appendChild(opt);
     }
+  }
+
+  // ---- Compare Players ----
+
+  const COMPARE_SELECT_IDS = ['compare-player-1', 'compare-player-2', 'compare-player-3'];
+
+  const COMPARE_STATS = [
+    { label: 'Team', get: p => teamName(p.team) },
+    { label: 'Position', get: p => positionName(p.element_type) },
+    { label: 'Price', get: p => '£' + (p.now_cost / 10).toFixed(1) + 'm', value: p => p.now_cost, numeric: true },
+    { label: 'Form', get: p => (parseFloat(p.form) || 0).toFixed(1), value: p => parseFloat(p.form) || 0, numeric: true },
+    { label: 'Total points', get: p => p.total_points, value: p => p.total_points, numeric: true },
+    { label: 'Selected by', get: p => (parseFloat(p.selected_by_percent) || 0).toFixed(1) + '%', value: p => parseFloat(p.selected_by_percent) || 0, numeric: true },
+    { label: 'Minutes', get: p => p.minutes, value: p => p.minutes, numeric: true },
+    { label: 'Goals', get: p => p.goals_scored, value: p => p.goals_scored, numeric: true },
+    { label: 'Assists', get: p => p.assists, value: p => p.assists, numeric: true },
+    { label: 'xG', get: p => (parseFloat(p.expected_goals) || 0).toFixed(1), value: p => parseFloat(p.expected_goals) || 0, numeric: true },
+    { label: 'xA', get: p => (parseFloat(p.expected_assists) || 0).toFixed(1), value: p => parseFloat(p.expected_assists) || 0, numeric: true },
+  ];
+
+  function initComparePanel() {
+    const options = state.bootstrap.elements
+      .map(p => ({ id: p.id, label: `${p.web_name} (${teamName(p.team)})` }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+
+    for (const selectId of COMPARE_SELECT_IDS) {
+      const select = document.getElementById(selectId);
+      for (const o of options) {
+        const opt = document.createElement('option');
+        opt.value = o.id;
+        opt.textContent = o.label;
+        select.appendChild(opt);
+      }
+      select.addEventListener('change', renderComparison);
+    }
+  }
+
+  function renderComparison() {
+    const container = document.getElementById('compare-content');
+    const ids = COMPARE_SELECT_IDS
+      .map(id => document.getElementById(id).value)
+      .filter(v => v)
+      .map(v => parseInt(v, 10));
+
+    if (ids.length < 2) {
+      container.innerHTML = '<p class="muted" style="margin-top:12px;">Pick at least 2 players to compare.</p>';
+      return;
+    }
+
+    const players = ids.map(id => state.bootstrap.elements.find(p => p.id === id)).filter(Boolean);
+
+    const rows = COMPARE_STATS.map(stat => {
+      const values = players.map(p => stat.get(p));
+      let bestIdx = -1;
+      if (stat.numeric) {
+        const numericValues = players.map(p => stat.value(p));
+        bestIdx = numericValues.indexOf(Math.max(...numericValues));
+      }
+      return `
+        <tr>
+          <td><strong>${escapeHtml(stat.label)}</strong></td>
+          ${values.map((v, i) => `<td class="num${i === bestIdx ? ' compare-best' : ''}">${escapeHtml(String(v))}</td>`).join('')}
+        </tr>
+      `;
+    }).join('');
+
+    container.innerHTML = `
+      <div class="table-wrap" style="margin-top:16px;">
+        <table>
+          <thead>
+            <tr>
+              <th></th>
+              ${players.map(p => `<th>${escapeHtml(p.web_name)}</th>`).join('')}
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    `;
   }
 
   function getPlayerRows() {
@@ -2203,6 +2321,15 @@
   // corners_and_indirect_freekicks_order can run 5,6,7,8 instead of 1,2,3,4) — the values are only
   // meaningful relative to each other within a team/category. So sort by the raw value to get the
   // correct ranking, but display our own 1-based position rather than the raw number.
+  // The name(s) holding rank 1 (or tied for it) in a set-piece order — used to detect when the
+  // first-choice taker changes, as distinct from reshuffles further down the list.
+  function topSetPieceTakers(players, orderKey) {
+    const withOrder = players.filter(p => p[orderKey] != null);
+    if (!withOrder.length) return [];
+    const min = Math.min(...withOrder.map(p => p[orderKey]));
+    return withOrder.filter(p => p[orderKey] === min).map(p => p.web_name).sort();
+  }
+
   function setPieceList(players, orderKey) {
     const list = players
       .filter(p => p[orderKey] != null)
@@ -2234,28 +2361,54 @@
     return escapeHtml(top.map(c => c.name).join(' & '));
   }
 
+  const SET_PIECE_SNAPSHOT_KEY = 'fplapp:setPieceTakers';
+
   function renderSetPieces() {
     const tbody = document.querySelector('#set-pieces-table tbody');
+    const previous = JSON.parse(localStorage.getItem(SET_PIECE_SNAPSHOT_KEY) || '{}');
+    const current = {};
+
     const rows = state.bootstrap.teams.map(team => {
       const players = state.bootstrap.elements.filter(p => p.team === team.id);
+      const snapshot = {
+        penalties: topSetPieceTakers(players, 'penalties_order'),
+        directFreekicks: topSetPieceTakers(players, 'direct_freekicks_order'),
+        corners: topSetPieceTakers(players, 'corners_and_indirect_freekicks_order'),
+      };
+      current[team.id] = snapshot;
+
+      // Only flag a real reshuffle: the previous snapshot must have had a taker at all, and
+      // differ from the current one (a first-ever sighting isn't a "change").
+      const prev = previous[team.id];
+      const changed = key => !!(prev && prev[key] && prev[key].length &&
+        JSON.stringify(prev[key]) !== JSON.stringify(snapshot[key]));
+
       return {
         name: team.name,
         primaryTaker: primarySetPieceTaker(players),
         penalties: setPieceList(players, 'penalties_order'),
         directFreekicks: setPieceList(players, 'direct_freekicks_order'),
         corners: setPieceList(players, 'corners_and_indirect_freekicks_order'),
+        penaltiesChanged: changed('penalties'),
+        freekicksChanged: changed('directFreekicks'),
+        cornersChanged: changed('corners'),
       };
     });
     rows.sort((a, b) => a.name.localeCompare(b.name));
+
+    const changedBadge = '<span class="diff-chip mini diff-warning" title="First-choice taker changed since you last checked this tab">Changed</span>';
+
     tbody.innerHTML = rows.map(r => `
       <tr>
         <td>${escapeHtml(r.name)}</td>
         <td><strong>${r.primaryTaker}</strong></td>
-        <td>${r.penalties}</td>
-        <td>${r.directFreekicks}</td>
-        <td>${r.corners}</td>
+        <td>${r.penalties} ${r.penaltiesChanged ? changedBadge : ''}</td>
+        <td>${r.directFreekicks} ${r.freekicksChanged ? changedBadge : ''}</td>
+        <td>${r.corners} ${r.cornersChanged ? changedBadge : ''}</td>
       </tr>
     `).join('');
+
+    localStorage.setItem(SET_PIECE_SNAPSHOT_KEY, JSON.stringify(current));
   }
 
   // ---- Deadline countdown ----
@@ -2370,6 +2523,119 @@
     document.getElementById('my-team-pitch').innerHTML = renderPitch(startersByPos);
     document.getElementById('my-team-bench').innerHTML = renderBenchStrip(bench);
     wrap.style.display = '';
+  }
+
+  // ---- Chip strategy ----
+
+  function renderChipAdvisor(chips) {
+    const section = document.getElementById('chip-advisor-section');
+    const container = document.getElementById('chip-advisor-list');
+    if (!chips) {
+      section.style.display = 'none';
+      return;
+    }
+
+    const swings = computeBlankDoubleGameweeks();
+    const nextBlank = swings.find(s => s.blankTeams.length > 0);
+    const nextDouble = swings.find(s => s.doubleTeams.length > 0);
+    const bestDouble = swings.reduce(
+      (best, s) => (s.doubleTeams.length > (best ? best.doubleTeams.length : 0) ? s : best), null);
+    const firstSwing = swings[0];
+
+    const suggestions = [];
+    if (chips.fh === 'available') {
+      suggestions.push({
+        name: 'Free Hit',
+        note: nextBlank
+          ? `Best used on a blank gameweek, when several teams don't play — ${escapeHtml(nextBlank.eventName)} is the next one, with ${nextBlank.blankTeams.length} team(s) blank.`
+          : `No blank gameweeks scheduled yet for the rest of the season — hold onto it for now.`,
+      });
+    }
+    if (chips.bb === 'available') {
+      suggestions.push({
+        name: 'Bench Boost',
+        note: bestDouble
+          ? `Best used on a double gameweek so your bench also scores twice — ${escapeHtml(bestDouble.eventName)} has the most teams playing twice (${bestDouble.doubleTeams.length}).`
+          : `No double gameweeks scheduled yet — hold onto it until one's announced.`,
+      });
+    }
+    if (chips.tc === 'available') {
+      suggestions.push({
+        name: 'Triple Captain',
+        note: nextDouble
+          ? `Best used on a double gameweek for your captain — ${escapeHtml(nextDouble.eventName)} is the next one scheduled.`
+          : `No double gameweeks scheduled yet — save it for one, or a single gameweek with a stand-out fixture.`,
+      });
+    }
+    if (chips.wc === 'available') {
+      suggestions.push({
+        name: 'Wildcard',
+        note: firstSwing
+          ? `Consider using it the gameweek before ${escapeHtml(firstSwing.eventName)}, to reshape your squad ahead of that ${firstSwing.blankTeams.length ? 'blank' : 'double'} gameweek.`
+          : `No major fixture swings scheduled yet — timing here is more about your own squad's injuries/form than a specific gameweek.`,
+      });
+    }
+
+    if (!suggestions.length) {
+      section.style.display = 'none';
+      return;
+    }
+
+    container.innerHTML = suggestions.map(s => `
+      <div style="padding:8px 0;border-bottom:1px solid var(--gridline);">
+        <strong>${escapeHtml(s.name)}</strong>
+        <div class="muted" style="font-size:0.85rem;margin-top:2px;">${s.note}</div>
+      </div>
+    `).join('');
+    section.style.display = '';
+  }
+
+  // ---- Template comparison ----
+
+  const TEMPLATE_SQUAD_COUNTS = { 1: 2, 2: 5, 3: 5, 4: 3 };
+
+  function buildTemplateSquad() {
+    const template = [];
+    for (const [type, n] of Object.entries(TEMPLATE_SQUAD_COUNTS)) {
+      const top = state.bootstrap.elements
+        .filter(p => p.element_type === Number(type))
+        .sort((a, b) => (parseFloat(b.selected_by_percent) || 0) - (parseFloat(a.selected_by_percent) || 0))
+        .slice(0, n);
+      template.push(...top);
+    }
+    return template;
+  }
+
+  function renderTemplateComparison(picks) {
+    const section = document.getElementById('template-comparison-section');
+    const content = document.getElementById('template-comparison-content');
+    if (!picks || !picks.length) {
+      section.style.display = 'none';
+      return;
+    }
+
+    const template = buildTemplateSquad();
+    const templateIds = new Set(template.map(p => p.id));
+    const myIds = new Set(picks.map(p => p.playerId));
+    const missing = template.filter(p => !myIds.has(p.id));
+    const differentials = picks.filter(p => !templateIds.has(p.playerId));
+    const overlapCount = picks.length - differentials.length;
+
+    const missingChip = p => `<span class="diff-chip mini diff-blank" title="${escapeHtml(teamName(p.team))} &middot; ${(parseFloat(p.selected_by_percent) || 0).toFixed(1)}% owned">${escapeHtml(p.web_name)}</span>`;
+    const mineChip = p => `<span class="diff-chip mini diff-blank" title="${escapeHtml(p.teamName)}">${escapeHtml(p.webName)}</span>`;
+
+    content.innerHTML = `
+      <p style="margin:0 0 10px;"><strong>${overlapCount}/${picks.length}</strong> of your squad matches the template.</p>
+      <div style="margin-bottom:12px;">
+        <div class="muted" style="font-size:0.82rem;font-weight:700;margin-bottom:4px;">In the template, not in your squad</div>
+        ${missing.length ? missing.map(missingChip).join(' ') : '<span class="muted">None — you own the whole template.</span>'}
+      </div>
+      <div>
+        <div class="muted" style="font-size:0.82rem;font-weight:700;margin-bottom:4px;">Your differentials (not in the template)</div>
+        ${differentials.length ? differentials.map(mineChip).join(' ') : '<span class="muted">None — your squad is the template.</span>'}
+      </div>
+    `;
+    section.style.display = '';
   }
 
   function renderCaptaincy(suggestions) {
@@ -2665,10 +2931,14 @@
     const tableWrap = document.getElementById('my-team-table-wrap');
     const captaincySection = document.getElementById('captaincy-section');
     const transferSuggestionsSection = document.getElementById('transfer-suggestions-section');
+    const chipAdvisorSection = document.getElementById('chip-advisor-section');
+    const templateComparisonSection = document.getElementById('template-comparison-section');
 
     statusEl.style.display = 'none';
     summaryEl.textContent = '';
     tableWrap.style.display = 'none';
+    chipAdvisorSection.style.display = 'none';
+    templateComparisonSection.style.display = 'none';
     document.getElementById('my-team-pitch-wrap').style.display = 'none';
     captaincySection.style.display = 'none';
     transferSuggestionsSection.style.display = 'none';
@@ -2715,6 +2985,8 @@
       setSquadBuilderBudget(data.bank + data.value);
       renderMyTeamPitch(data.picks);
       renderMyTeamRows(data.picks);
+      renderChipAdvisor(data.chips);
+      renderTemplateComparison(data.picks);
       tableWrap.style.display = '';
       state.myTeam = { teamId, eventId };
 
