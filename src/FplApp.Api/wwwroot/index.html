@@ -444,6 +444,49 @@
     color: var(--status-good);
     font-weight: 800;
   }
+  .compare-search-wrap {
+    position: relative;
+  }
+  .compare-search-wrap input {
+    font: inherit;
+    font-size: 0.875rem;
+    height: 36px;
+    padding: 0 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-1);
+    color: var(--text-primary);
+    min-width: 220px;
+  }
+  .compare-suggestions {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 20;
+    max-height: 260px;
+    overflow-y: auto;
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: var(--shadow-md);
+  }
+  .compare-suggestions.open {
+    display: block;
+  }
+  .compare-suggestion {
+    padding: 8px 10px;
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+  .compare-suggestion:hover,
+  .compare-suggestion.active {
+    background: var(--row-hover);
+  }
+  .compare-suggestion .muted {
+    font-size: 0.78rem;
+  }
   .diff-blank {
     background: var(--gridline);
     color: var(--text-secondary);
@@ -882,9 +925,18 @@
       Pick up to 3 players to see their stats side by side.
     </p>
     <div class="controls">
-      <select id="compare-player-1"><option value="">Player 1&hellip;</option></select>
-      <select id="compare-player-2"><option value="">Player 2&hellip;</option></select>
-      <select id="compare-player-3"><option value="">Player 3 (optional)&hellip;</option></select>
+      <div class="compare-search-wrap">
+        <input id="compare-player-1" type="text" placeholder="Search player 1&hellip;" autocomplete="off">
+        <div id="compare-player-1-suggestions" class="compare-suggestions"></div>
+      </div>
+      <div class="compare-search-wrap">
+        <input id="compare-player-2" type="text" placeholder="Search player 2&hellip;" autocomplete="off">
+        <div id="compare-player-2-suggestions" class="compare-suggestions"></div>
+      </div>
+      <div class="compare-search-wrap">
+        <input id="compare-player-3" type="text" placeholder="Search player 3 (optional)&hellip;" autocomplete="off">
+        <div id="compare-player-3-suggestions" class="compare-suggestions"></div>
+      </div>
     </div>
     <div id="compare-content"></div>
   </section>
@@ -1856,29 +1908,75 @@
     { label: 'xA', get: p => (parseFloat(p.expected_assists) || 0).toFixed(1), value: p => parseFloat(p.expected_assists) || 0, numeric: true },
   ];
 
-  function initComparePanel() {
-    const options = state.bootstrap.elements
-      .map(p => ({ id: p.id, label: `${p.web_name} (${teamName(p.team)})` }))
-      .sort((a, b) => a.label.localeCompare(b.label));
+  // Player id picked for each compare input, keyed by input id — the input's visible text is
+  // just for display/searching, so a custom map is simpler than parsing it back out.
+  const comparePlayerIds = {};
 
-    for (const selectId of COMPARE_SELECT_IDS) {
-      const select = document.getElementById(selectId);
-      for (const o of options) {
-        const opt = document.createElement('option');
-        opt.value = o.id;
-        opt.textContent = o.label;
-        select.appendChild(opt);
-      }
-      select.addEventListener('change', renderComparison);
+  const COMPARE_MAX_SUGGESTIONS = 8;
+
+  function compareSuggestionsFor(query) {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    return state.bootstrap.elements
+      .filter(p => p.web_name.toLowerCase().includes(q))
+      .sort((a, b) => (parseFloat(b.selected_by_percent) || 0) - (parseFloat(a.selected_by_percent) || 0))
+      .slice(0, COMPARE_MAX_SUGGESTIONS);
+  }
+
+  function closeCompareSuggestions(inputId) {
+    document.getElementById(`${inputId}-suggestions`).classList.remove('open');
+  }
+
+  function openCompareSuggestions(inputId) {
+    const input = document.getElementById(inputId);
+    const box = document.getElementById(`${inputId}-suggestions`);
+    const matches = compareSuggestionsFor(input.value);
+
+    if (!matches.length) {
+      box.classList.remove('open');
+      return;
+    }
+
+    box.innerHTML = matches.map(p => `
+      <div class="compare-suggestion" data-player-id="${p.id}">
+        ${escapeHtml(p.web_name)} <span class="muted">(${escapeHtml(teamName(p.team))} &middot; ${escapeHtml(positionName(p.element_type))})</span>
+      </div>
+    `).join('');
+    box.classList.add('open');
+
+    box.querySelectorAll('.compare-suggestion').forEach(el => {
+      // mousedown (not click) so it fires before the input's blur closes the dropdown.
+      el.addEventListener('mousedown', e => {
+        e.preventDefault();
+        const player = state.bootstrap.elements.find(p => p.id === parseInt(el.dataset.playerId, 10));
+        if (!player) return;
+        input.value = `${player.web_name} (${teamName(player.team)})`;
+        comparePlayerIds[inputId] = player.id;
+        closeCompareSuggestions(inputId);
+        renderComparison();
+      });
+    });
+  }
+
+  function initComparePanel() {
+    for (const inputId of COMPARE_SELECT_IDS) {
+      const input = document.getElementById(inputId);
+      input.addEventListener('input', () => {
+        // Typing invalidates whatever was previously picked until a suggestion is clicked again.
+        delete comparePlayerIds[inputId];
+        openCompareSuggestions(inputId);
+        renderComparison();
+      });
+      input.addEventListener('focus', () => openCompareSuggestions(inputId));
+      input.addEventListener('blur', () => closeCompareSuggestions(inputId));
     }
   }
 
   function renderComparison() {
     const container = document.getElementById('compare-content');
     const ids = COMPARE_SELECT_IDS
-      .map(id => document.getElementById(id).value)
-      .filter(v => v)
-      .map(v => parseInt(v, 10));
+      .map(id => comparePlayerIds[id])
+      .filter(v => v != null);
 
     if (ids.length < 2) {
       container.innerHTML = '<p class="muted" style="margin-top:12px;">Pick at least 2 players to compare.</p>';
