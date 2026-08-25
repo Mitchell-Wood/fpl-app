@@ -216,6 +216,29 @@
        collapse into a single-word-per-line column next to the refresh button. */
     .brand-lockup { min-width: 200px; }
   }
+  .deadline-banner {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 14px;
+    padding: 8px 14px;
+    border-radius: 999px;
+    background: rgba(0,255,133,0.1);
+    border: 1px solid rgba(0,255,133,0.28);
+    color: rgba(255,255,255,0.9);
+    font-size: 0.8rem;
+    font-weight: 600;
+    width: fit-content;
+  }
+  .deadline-banner.urgent {
+    background: rgba(255,90,90,0.14);
+    border-color: rgba(255,90,90,0.4);
+  }
+  .deadline-banner .deadline-time {
+    color: var(--brand-accent);
+    font-weight: 800;
+  }
+  .deadline-banner.urgent .deadline-time { color: #ff9a9a; }
   h1 {
     margin: 0 0 4px;
     font-family: "Sora", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -797,6 +820,10 @@
           <span id="refresh-btn-label">Refresh</span>
         </button>
       </div>
+    </div>
+    <div id="deadline-banner" class="deadline-banner">
+      <span>&#9200;</span>
+      <span id="deadline-banner-text"></span>
     </div>
     <nav class="tabs">
       <button data-panel="my-team" class="active">My Team</button>
@@ -1473,6 +1500,7 @@
       state.teamIdByShortName = new Map(bootstrap.teams.map(t => [t.short_name, t.id]));
       state.positionsById = new Map(bootstrap.element_types.map(p => [p.id, p]));
       statusEl.style.display = 'none';
+      initDeadlineCountdown();
       initPositionFilter();
       initGameweekFilter();
       initBonusGameweekFilter();
@@ -2228,6 +2256,56 @@
         <td>${r.corners}</td>
       </tr>
     `).join('');
+  }
+
+  // ---- Deadline countdown ----
+
+  let deadlineCountdownTimer = null;
+
+  function initDeadlineCountdown() {
+    const events = state.bootstrap.events;
+    const nextEvent = events.find(e => new Date(e.deadline_time).getTime() > Date.now());
+    const banner = document.getElementById('deadline-banner');
+    const textEl = document.getElementById('deadline-banner-text');
+
+    if (!nextEvent) {
+      banner.style.display = 'none';
+      if (deadlineCountdownTimer) clearInterval(deadlineCountdownTimer);
+      return;
+    }
+
+    const deadlineMs = new Date(nextEvent.deadline_time).getTime();
+    const deadlineLabel = new Date(nextEvent.deadline_time).toLocaleString(undefined, {
+      weekday: 'short', hour: 'numeric', minute: '2-digit',
+    });
+
+    function tick() {
+      const remainingMs = deadlineMs - Date.now();
+      if (remainingMs <= 0) {
+        // Deadline just passed — re-resolve to the next one rather than showing a negative countdown.
+        initDeadlineCountdown();
+        return;
+      }
+
+      const totalMinutes = Math.floor(remainingMs / 60000);
+      const days = Math.floor(totalMinutes / 1440);
+      const hours = Math.floor((totalMinutes % 1440) / 60);
+      const minutes = totalMinutes % 60;
+
+      let countdown;
+      if (days > 0) countdown = `${days}d ${hours}h`;
+      else if (hours > 0) countdown = `${hours}h ${minutes}m`;
+      else countdown = `${minutes}m`;
+
+      textEl.innerHTML = `${escapeHtml(nextEvent.name)} deadline in <span class="deadline-time">${countdown}</span> &middot; ${escapeHtml(deadlineLabel)}`;
+      // Under 3 hours to go — call it out so it isn't just background noise.
+      banner.classList.toggle('urgent', remainingMs < 3 * 60 * 60 * 1000);
+    }
+
+    tick();
+    banner.style.display = 'flex';
+    if (deadlineCountdownTimer) clearInterval(deadlineCountdownTimer);
+    deadlineCountdownTimer = setInterval(tick, 30000);
   }
 
   // ---- My Team ----
