@@ -1987,16 +1987,15 @@
 
     const rows = COMPARE_STATS.map(stat => {
       const values = players.map(p => stat.get(p));
-      let bestIdx = -1;
+      let bestValue = null;
       if (stat.numeric) {
         const numericValues = players.map(p => stat.value(p));
-        const target = stat.lowerIsBetter ? Math.min(...numericValues) : Math.max(...numericValues);
-        bestIdx = numericValues.indexOf(target);
+        bestValue = stat.lowerIsBetter ? Math.min(...numericValues) : Math.max(...numericValues);
       }
       return `
         <tr>
           <td><strong>${escapeHtml(stat.label)}</strong></td>
-          ${values.map((v, i) => `<td class="num${i === bestIdx ? ' compare-best' : ''}">${escapeHtml(String(v))}</td>`).join('')}
+          ${values.map((v, i) => `<td class="num${stat.numeric && stat.value(players[i]) === bestValue ? ' compare-best' : ''}">${escapeHtml(String(v))}</td>`).join('')}
         </tr>
       `;
     }).join('');
