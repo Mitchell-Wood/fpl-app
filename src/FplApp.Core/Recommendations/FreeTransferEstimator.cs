@@ -4,11 +4,10 @@ namespace FplApp.Core.Recommendations;
 
 /// <summary>
 /// Estimates a manager's currently banked free transfers by simulating the accrual rule across
-/// their public gameweek history: +1 free transfer per week, capped at 5, preserved (not reset)
-/// through a Wildcard or Free Hit gameweek. Confirmed for the 2026/27 season: max-5 rollover is
-/// unchanged; the "preserved through chips" behavior was confirmed for 2025/26 and not contradicted
-/// by anything newer, but isn't separately reconfirmed for this exact season — so this is a
-/// best-effort estimate, not a guarantee.
+/// their public gameweek history: +1 free transfer per week, capped at 5. A Wildcard or Free Hit
+/// gameweek is frozen — transfers made under the chip are unlimited and don't count, and the
+/// banked free transfer total carries over unchanged into the following gameweek (it neither
+/// gains nor loses a transfer for that week).
 /// </summary>
 public static class FreeTransferEstimator
 {
@@ -33,7 +32,8 @@ public static class FreeTransferEstimator
         {
             if (chipEvents.Contains(gw.Event))
             {
-                available = Math.Min(MaxBanked, available + 1);
+                // Wildcard/Free Hit transfers are unlimited and don't touch the banked count —
+                // it carries over into next gameweek exactly as it stood going into this one.
             }
             else if (gw.EventTransfers <= available)
             {

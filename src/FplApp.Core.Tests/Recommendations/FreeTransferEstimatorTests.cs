@@ -96,7 +96,7 @@ public class FreeTransferEstimatorTests
     [InlineData("Wildcard")]
     [InlineData("freehit")]
     [InlineData("FreeHit")]
-    public void UnlimitedTransferChip_PreservesAndAccruesBankedTransfers_IgnoringTransferCount(string chipName)
+    public void UnlimitedTransferChip_FreezesBankedTransfers_IgnoringTransferCount(string chipName)
     {
         var history = new List<EntryHistory>
         {
@@ -107,16 +107,16 @@ public class FreeTransferEstimatorTests
 
         var result = FreeTransferEstimator.EstimateAvailable(history, chips);
 
-        // Chip preserves the banked amount and still adds the usual +1: 2 -> 3
-        Assert.Equal(3, result);
+        // Chip week is frozen: no gain, no loss, so the banked amount carries over unchanged.
+        Assert.Equal(2, result);
     }
 
     [Fact]
     public void UnlimitedTransferChip_AlsoCapsAtFive()
     {
-        var history = Enumerable.Range(2, 5).Select(gw => Gw(gw, 0)).ToList();
-        history.Add(Gw(7, 20));
-        var chips = new List<ChipPlay> { Chip("wildcard", 7) };
+        var history = Enumerable.Range(2, 6).Select(gw => Gw(gw, 0)).ToList();
+        history.Add(Gw(8, 20));
+        var chips = new List<ChipPlay> { Chip("wildcard", 8) };
 
         var result = FreeTransferEstimator.EstimateAvailable(history, chips);
 
