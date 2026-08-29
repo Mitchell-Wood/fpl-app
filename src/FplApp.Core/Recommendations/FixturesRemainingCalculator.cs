@@ -152,4 +152,38 @@ public static class FixturesRemainingCalculator
 
         return total;
     }
+
+    /// <summary>
+    /// True if the manager's captain still has a fixture-leg left to play this gameweek — i.e. they
+    /// still count towards <see cref="CountRemaining"/> — false if all their fixtures have finished
+    /// (or their team has no fixture at all this gameweek), and null if no captain pick is found.
+    /// Ignores FPL's captain-armband-to-vice-captain reassignment for a confirmed-out captain, since
+    /// that's a rare edge case not worth the extra complexity here.
+    /// </summary>
+    public static bool? CaptainHasFixtureRemaining(
+        BootstrapStatic bootstrap,
+        IReadOnlyList<Fixture> fixtures,
+        TeamPicks picks,
+        int eventId)
+    {
+        ArgumentNullException.ThrowIfNull(bootstrap);
+        ArgumentNullException.ThrowIfNull(fixtures);
+        ArgumentNullException.ThrowIfNull(picks);
+
+        var captainPick = picks.Picks.FirstOrDefault(p => p.IsCaptain);
+        if (captainPick is null)
+        {
+            return null;
+        }
+
+        var playersById = bootstrap.Elements.ToDictionary(p => p.Id);
+        if (!playersById.TryGetValue(captainPick.Element, out var captain))
+        {
+            return null;
+        }
+
+        return fixtures.Any(f => f.Event == eventId
+            && !f.FinishedProvisional
+            && (f.TeamH == captain.Team || f.TeamA == captain.Team));
+    }
 }

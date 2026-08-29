@@ -16,8 +16,8 @@ public class FixturesRemainingCalculatorTests
     private static Player MakePlayer(int id, int team, int elementType = Def)
         => new() { Id = id, WebName = $"Player{id}", Team = team, ElementType = elementType };
 
-    private static Pick MakePick(Player player, int position)
-        => new() { Element = player.Id, Position = position };
+    private static Pick MakePick(Player player, int position, bool isCaptain = false)
+        => new() { Element = player.Id, Position = position, IsCaptain = isCaptain };
 
     private static BootstrapStatic MakeBootstrap(params Player[] players)
         => new()
@@ -352,5 +352,76 @@ public class FixturesRemainingCalculatorTests
 
         // Not confirmed out yet (leg 2 still to come), so no sub — just his own remaining leg counts.
         Assert.Equal(1, result);
+    }
+
+    // ---- CaptainHasFixtureRemaining ----
+
+    [Fact]
+    public void CaptainHasFixtureRemaining_TrueWhenCaptainsFixtureHasNotFinished()
+    {
+        var captain = MakePlayer(1, team: 1);
+        var bootstrap = MakeBootstrap(captain);
+        var fixtures = new List<Fixture> { new() { Event = EventId, TeamH = 1, TeamA = 2, FinishedProvisional = false } };
+        var picks = new TeamPicks { Picks = [MakePick(captain, 1, isCaptain: true)] };
+
+        var result = FixturesRemainingCalculator.CaptainHasFixtureRemaining(bootstrap, fixtures, picks, EventId);
+
+        Assert.True(result);
+    }
+
+    [Fact]
+    public void CaptainHasFixtureRemaining_FalseWhenCaptainsFixtureHasFinished()
+    {
+        var captain = MakePlayer(1, team: 1);
+        var bootstrap = MakeBootstrap(captain);
+        var fixtures = new List<Fixture> { new() { Event = EventId, TeamH = 1, TeamA = 2, FinishedProvisional = true } };
+        var picks = new TeamPicks { Picks = [MakePick(captain, 1, isCaptain: true)] };
+
+        var result = FixturesRemainingCalculator.CaptainHasFixtureRemaining(bootstrap, fixtures, picks, EventId);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void CaptainHasFixtureRemaining_FalseOnABlankGameweekForTheCaptainsTeam()
+    {
+        var captain = MakePlayer(1, team: 1);
+        var bootstrap = MakeBootstrap(captain);
+        var fixtures = new List<Fixture> { new() { Event = EventId, TeamH = 2, TeamA = 3, FinishedProvisional = false } };
+        var picks = new TeamPicks { Picks = [MakePick(captain, 1, isCaptain: true)] };
+
+        var result = FixturesRemainingCalculator.CaptainHasFixtureRemaining(bootstrap, fixtures, picks, EventId);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void CaptainHasFixtureRemaining_TrueWhenOnlyOneLegOfADoubleGameweekHasFinished()
+    {
+        var captain = MakePlayer(1, team: 1);
+        var bootstrap = MakeBootstrap(captain);
+        var fixtures = new List<Fixture>
+        {
+            new() { Event = EventId, TeamH = 1, TeamA = 9, FinishedProvisional = true },
+            new() { Event = EventId, TeamH = 8, TeamA = 1, FinishedProvisional = false },
+        };
+        var picks = new TeamPicks { Picks = [MakePick(captain, 1, isCaptain: true)] };
+
+        var result = FixturesRemainingCalculator.CaptainHasFixtureRemaining(bootstrap, fixtures, picks, EventId);
+
+        Assert.True(result);
+    }
+
+    [Fact]
+    public void CaptainHasFixtureRemaining_NullWhenNoCaptainPickIsFound()
+    {
+        var starter = MakePlayer(1, team: 1);
+        var bootstrap = MakeBootstrap(starter);
+        var fixtures = new List<Fixture> { new() { Event = EventId, TeamH = 1, TeamA = 2, FinishedProvisional = false } };
+        var picks = new TeamPicks { Picks = [MakePick(starter, 1)] };
+
+        var result = FixturesRemainingCalculator.CaptainHasFixtureRemaining(bootstrap, fixtures, picks, EventId);
+
+        Assert.Null(result);
     }
 }
