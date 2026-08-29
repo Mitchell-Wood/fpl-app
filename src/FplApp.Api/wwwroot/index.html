@@ -1897,7 +1897,7 @@
   const COMPARE_STATS = [
     { label: 'Team', get: p => teamName(p.team) },
     { label: 'Position', get: p => positionName(p.element_type) },
-    { label: 'Price', get: p => '£' + (p.now_cost / 10).toFixed(1) + 'm', value: p => p.now_cost, numeric: true },
+    { label: 'Price', get: p => '£' + (p.now_cost / 10).toFixed(1) + 'm', value: p => p.now_cost, numeric: true, lowerIsBetter: true },
     { label: 'Form', get: p => (parseFloat(p.form) || 0).toFixed(1), value: p => parseFloat(p.form) || 0, numeric: true },
     { label: 'Total points', get: p => p.total_points, value: p => p.total_points, numeric: true },
     { label: 'Selected by', get: p => (parseFloat(p.selected_by_percent) || 0).toFixed(1) + '%', value: p => parseFloat(p.selected_by_percent) || 0, numeric: true },
@@ -1990,7 +1990,8 @@
       let bestIdx = -1;
       if (stat.numeric) {
         const numericValues = players.map(p => stat.value(p));
-        bestIdx = numericValues.indexOf(Math.max(...numericValues));
+        const target = stat.lowerIsBetter ? Math.min(...numericValues) : Math.max(...numericValues);
+        bestIdx = numericValues.indexOf(target);
       }
       return `
         <tr>
@@ -2006,7 +2007,7 @@
           <thead>
             <tr>
               <th></th>
-              ${players.map(p => `<th>${escapeHtml(p.web_name)}</th>`).join('')}
+              ${players.map(p => `<th class="num">${escapeHtml(p.web_name)}</th>`).join('')}
             </tr>
           </thead>
           <tbody>${rows}</tbody>
