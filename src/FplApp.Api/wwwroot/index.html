@@ -1227,16 +1227,16 @@
       <table id="ml-standings-table">
         <thead>
           <tr>
-            <th class="num">Rank</th>
-            <th>Team</th>
-            <th>Manager</th>
-            <th class="num">Total Points</th>
-            <th class="num">GW Points</th>
-            <th class="num ml-detail-col" title="Starting XI players whose fixture(s) haven't finished yet this gameweek — a double gameweek counts twice. (C) means their captain hasn't played yet.">Left to Play</th>
-            <th class="num ml-detail-col" title="Estimated from public gameweek history — not an official FPL figure">Free Transfers</th>
+            <th class="num sortable" data-key="rank">Rank</th>
+            <th class="sortable" data-key="entryName">Team</th>
+            <th class="sortable" data-key="playerName">Manager</th>
+            <th class="num sortable" data-key="total">Total Points</th>
+            <th class="num sortable" data-key="eventTotal">GW Points</th>
+            <th class="num sortable ml-detail-col" data-key="fixturesLeft" title="Starting XI players whose fixture(s) haven't finished yet this gameweek — a double gameweek counts twice. (C) means their captain hasn't played yet.">Left to Play</th>
+            <th class="num sortable ml-detail-col" data-key="estimatedFreeTransfers" title="Estimated from public gameweek history — not an official FPL figure">Free Transfers</th>
             <th class="num ml-detail-col" title="TC = Triple Captain, BB = Bench Boost, FH = Free Hit, WC = Wildcard. Green = playing this gameweek, red = already used this half of the season (resets at GW20).">Chips</th>
-            <th class="num ml-detail-col" title="How much of this manager's starting XI + captain is shared with other managers this gameweek, via livefpl.net. Higher = more template.">Clone %</th>
-            <th class="num ml-detail-col" title="How heavy each line of your team is compared to top 10k teams">Template %</th>
+            <th class="num sortable ml-detail-col" data-key="cloneRatingPercent" title="How much of this manager's starting XI + captain is shared with other managers this gameweek, via livefpl.net. Higher = more template.">Clone %</th>
+            <th class="num sortable ml-detail-col" data-key="templateRatingPercent" title="How heavy each line of your team is compared to top 10k teams">Template %</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -1363,7 +1363,7 @@
     lineupsLoaded: false,
     myTeamLoaded: false,
     miniLeaguesLoaded: false,
-    miniLeague: { leagueId: null, page: 1 },
+    miniLeague: { leagueId: null, page: 1, rows: [], hasManagerDetail: false, sort: { key: 'rank', dir: 'asc' } },
     myTeam: null, // { teamId, eventId }
   };
 
@@ -3183,8 +3183,9 @@
     const tbody = document.querySelector('#ml-standings-table tbody');
     const standingsWrap = document.getElementById('ml-standings-wrap');
     const loadMoreWrap = document.getElementById('ml-load-more-wrap');
+    const prevSort = state.miniLeague.sort;
 
-    state.miniLeague = { leagueId, page };
+    state.miniLeague = { leagueId, page, rows: append ? state.miniLeague.rows : [], hasManagerDetail: false, sort: prevSort };
     if (!append) tbody.innerHTML = `<tr><td colspan="10" class="muted">Loading&hellip;</td></tr>`;
 
     try {
@@ -3192,45 +3193,64 @@
       if (!res.ok) throw new Error('league-standings ' + res.status);
       const data = await res.json();
 
-      const detailCellsHtml = r => `
-          <td class="num">${r.fixturesLeft ?? '—'}${r.fixturesLeft && r.captainYetToPlay ? ' <span class="muted" title="Captain hasn\'t played yet">(C)</span>' : ''}</td>
-          <td class="num">${r.estimatedFreeTransfers ?? '—'}</td>
-          <td class="num">${renderChipsCell(r.chips)}</td>
-          <td class="num">${r.cloneRatingPercent != null ? r.cloneRatingPercent.toFixed(1) + '%' : '—'}</td>
-          <td class="num">${r.templateRatingPercent != null ? r.templateRatingPercent.toFixed(1) + '%' : '—'}</td>
-      `;
+      state.miniLeague.rows = append ? state.miniLeague.rows.concat(data.results) : data.results;
+      state.miniLeague.hasManagerDetail = data.hasManagerDetail;
+      state.miniLeague.hasNext = data.hasNext;
 
-      const rowsHtml = data.results.map(r => `
-        <tr style="cursor:pointer" data-entry="${r.entry}" data-team-name="${escapeHtml(r.entryName)}" data-manager-name="${escapeHtml(r.playerName)}">
-          <td class="num">${r.rank}</td>
-          <td>${escapeHtml(r.entryName)}</td>
-          <td>${escapeHtml(r.playerName)}</td>
-          <td class="num">${r.total}</td>
-          <td class="num">${r.eventTotal}</td>
-          ${data.hasManagerDetail ? detailCellsHtml(r) : ''}
-        </tr>
-      `).join('');
-
-      const colCount = data.hasManagerDetail ? 10 : 5;
-      if (append) {
-        tbody.insertAdjacentHTML('beforeend', rowsHtml);
-      } else {
-        tbody.innerHTML = rowsHtml || `<tr><td colspan="${colCount}" class="muted">No standings yet for this league (usually empty until a gameweek has been scored).</td></tr>`;
-      }
+      renderMiniLeagueStandings();
       standingsWrap.style.display = '';
       loadMoreWrap.style.display = data.hasNext ? '' : 'none';
-      document.querySelectorAll('#ml-standings-table .ml-detail-col').forEach(th => {
-        th.style.display = data.hasManagerDetail ? '' : 'none';
-      });
-
-      tbody.querySelectorAll('tr[data-entry]').forEach(tr => {
-        tr.addEventListener('click', () => loadManagerHistory(
-          parseInt(tr.dataset.entry, 10), tr.dataset.teamName, tr.dataset.managerName));
-      });
     } catch (err) {
       if (!append) tbody.innerHTML = `<tr><td colspan="10" class="muted">Could not load standings: ${escapeHtml(err.message)}</td></tr>`;
       document.querySelectorAll('#ml-standings-table .ml-detail-col').forEach(th => { th.style.display = ''; });
     }
+  }
+
+  function renderMiniLeagueStandings() {
+    const tbody = document.querySelector('#ml-standings-table tbody');
+    const { rows, hasManagerDetail } = state.miniLeague;
+
+    const detailCellsHtml = r => `
+        <td class="num">${r.fixturesLeft ?? '—'}${r.fixturesLeft && r.captainYetToPlay ? ' <span class="muted" title="Captain hasn\'t played yet">(C)</span>' : ''}</td>
+        <td class="num">${r.estimatedFreeTransfers ?? '—'}</td>
+        <td class="num">${renderChipsCell(r.chips)}</td>
+        <td class="num">${r.cloneRatingPercent != null ? r.cloneRatingPercent.toFixed(1) + '%' : '—'}</td>
+        <td class="num">${r.templateRatingPercent != null ? r.templateRatingPercent.toFixed(1) + '%' : '—'}</td>
+    `;
+
+    const { key, dir } = state.miniLeague.sort;
+    const sortedRows = [...rows].sort((a, b) => {
+      const av = a[key], bv = b[key];
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      const cmp = typeof av === 'string' ? av.localeCompare(bv) : av - bv;
+      return dir === 'asc' ? cmp : -cmp;
+    });
+
+    const rowsHtml = sortedRows.map(r => `
+      <tr style="cursor:pointer" data-entry="${r.entry}" data-team-name="${escapeHtml(r.entryName)}" data-manager-name="${escapeHtml(r.playerName)}">
+        <td class="num">${r.rank}</td>
+        <td>${escapeHtml(r.entryName)}</td>
+        <td>${escapeHtml(r.playerName)}</td>
+        <td class="num">${r.total}</td>
+        <td class="num">${r.eventTotal}</td>
+        ${hasManagerDetail ? detailCellsHtml(r) : ''}
+      </tr>
+    `).join('');
+
+    const colCount = hasManagerDetail ? 10 : 5;
+    tbody.innerHTML = rowsHtml || `<tr><td colspan="${colCount}" class="muted">No standings yet for this league (usually empty until a gameweek has been scored).</td></tr>`;
+    document.querySelectorAll('#ml-standings-table .ml-detail-col').forEach(th => {
+      th.style.display = hasManagerDetail ? '' : 'none';
+    });
+
+    tbody.querySelectorAll('tr[data-entry]').forEach(tr => {
+      tr.addEventListener('click', () => loadManagerHistory(
+        parseInt(tr.dataset.entry, 10), tr.dataset.teamName, tr.dataset.managerName));
+    });
+
+    updateSortArrows('ml-standings-table', state.miniLeague.sort);
   }
 
   function transferDetailHtml(transfers) {
@@ -3588,6 +3608,7 @@
   wireTabs();
   wireSorting('players-table', state.playerSort, renderPlayers);
   wireSorting('teams-table', state.teamSort, renderTeams);
+  wireSorting('ml-standings-table', state.miniLeague.sort, renderMiniLeagueStandings);
   document.getElementById('player-search').addEventListener('input', renderPlayers);
   document.getElementById('player-position').addEventListener('change', renderPlayers);
   wireSorting('ticker-table', state.tickerSort, renderTicker);
