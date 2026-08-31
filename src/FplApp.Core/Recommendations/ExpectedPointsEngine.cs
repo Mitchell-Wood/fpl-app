@@ -29,9 +29,16 @@ public static class ExpectedPointsEngine
     // marked available — this is the floor that rate gets shrunk toward as minutes share drops to 0.
     private const double MinReliabilityMultiplier = 0.3;
 
+    // FPL awards 2pts for hitting a minimum number of defensive actions (CBIT) in a single match:
+    // 10 for defenders, 12 for midfielders/forwards.
+    private const int DefenderDefensiveContributionThreshold = 10;
+    private const int AttackingDefensiveContributionThreshold = 12;
+    private const double DefensiveContributionPoints = 2.0;
+
     private const int GoalkeeperType = 1;
     private const int DefenderType = 2;
     private const int MidfielderType = 3;
+    private const int ForwardType = 4;
 
     /// <summary>Expected points for one specific fixture — the rate signal scaled by fixture difficulty.</summary>
     public static double EstimatePoints(Player player, Team? playerTeam, int fplDifficulty, Team? opponentTeam, bool isHome)
@@ -139,7 +146,45 @@ public static class ExpectedPointsEngine
         }
 
         const double appearancePoints = 2.0; // guaranteed for any player who starts (60+ minutes)
-        return attackingPoints + defensivePoints + appearancePoints;
+        return attackingPoints + defensivePoints + appearancePoints + DefensiveContributionPointsFor(player);
+    }
+
+    /// <summary>
+    /// Expected value of the defensive-contribution bonus point, treating a player's per-match count
+    /// of defensive actions as Poisson-distributed around their season per-90 rate — a standard way
+    /// to turn a per-90 average into "probability of clearing a fixed threshold in one match" for a
+    /// count-based stat like this.
+    /// </summary>
+    private static double DefensiveContributionPointsFor(Player player)
+    {
+        var threshold = player.ElementType switch
+        {
+            DefenderType => DefenderDefensiveContributionThreshold,
+            MidfielderType or ForwardType => AttackingDefensiveContributionThreshold,
+            _ => (int?)null, // goalkeepers aren't eligible for the defensive-contribution point
+        };
+
+        return threshold is null ? 0 : DefensiveContributionPoints * PoissonProbabilityAtLeast(threshold.Value, player.DefensiveContributionPer90);
+    }
+
+    private static double PoissonProbabilityAtLeast(int threshold, double meanPerMatch)
+    {
+        if (meanPerMatch <= 0)
+        {
+            return 0;
+        }
+
+        // P(X >= threshold) = 1 - P(X <= threshold-1), built up term-by-term from the Poisson pmf
+        // (pmf(n) = pmf(n-1) * lambda / n) rather than computing factorials directly.
+        var pmf = Math.Exp(-meanPerMatch);
+        var cdf = pmf;
+        for (var n = 1; n < threshold; n++)
+        {
+            pmf *= meanPerMatch / n;
+            cdf += pmf;
+        }
+
+        return Math.Clamp(1 - cdf, 0, 1);
     }
 
     private static double PlayerSetPieceBonus(Player player)

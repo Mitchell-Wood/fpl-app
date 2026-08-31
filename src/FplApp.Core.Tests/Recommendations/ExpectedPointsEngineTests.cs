@@ -13,6 +13,7 @@ public class ExpectedPointsEngineTests
         int minutes = 0,
         string xgi = "0",
         string xgc = "0",
+        double defensiveContributionPer90 = 0,
         int? penaltiesOrder = null,
         int? freekicksOrder = null,
         int? cornersOrder = null)
@@ -23,6 +24,7 @@ public class ExpectedPointsEngineTests
             Form = form,
             PointsPerGame = pointsPerGame,
             ExpectedPointsNext = epNext,
+            DefensiveContributionPer90 = defensiveContributionPer90,
             Minutes = minutes,
             ExpectedGoalInvolvements = xgi,
             ExpectedGoalsConceded = xgc,
@@ -84,6 +86,37 @@ public class ExpectedPointsEngineTests
 
         Assert.Equal(3.0, ExpectedPointsEngine.EffectiveRate(gk, null));
         Assert.Equal(3.0, ExpectedPointsEngine.EffectiveRate(fwd, null));
+    }
+
+    [Fact]
+    public void EffectiveRate_RisesWithDefensiveContributionRate_ForDefendersAboveTheBlendThreshold()
+    {
+        var noDefensiveWork = MakePlayer(elementType: 2, form: "3.0", minutes: 900, defensiveContributionPer90: 0);
+        var heavyDefensiveWork = MakePlayer(elementType: 2, form: "3.0", minutes: 900, defensiveContributionPer90: 10);
+
+        Assert.True(
+            ExpectedPointsEngine.EffectiveRate(heavyDefensiveWork, null) > ExpectedPointsEngine.EffectiveRate(noDefensiveWork, null),
+            "a defender averaging the 10-action threshold every match should rate higher than one who never contributes defensively");
+    }
+
+    [Fact]
+    public void EffectiveRate_UsesTheHigherAttackingThreshold_ForMidfieldersAndForwards()
+    {
+        // A rate of 10 clears the defender threshold comfortably but falls short of the higher
+        // midfielder/forward one (12) — so a defender should get more credit for the same rate.
+        var defenderAtTen = MakePlayer(elementType: 2, form: "3.0", minutes: 900, defensiveContributionPer90: 10);
+        var midfielderAtTen = MakePlayer(elementType: 3, form: "3.0", minutes: 900, defensiveContributionPer90: 10);
+
+        Assert.True(ExpectedPointsEngine.EffectiveRate(defenderAtTen, null) > ExpectedPointsEngine.EffectiveRate(midfielderAtTen, null));
+    }
+
+    [Fact]
+    public void EffectiveRate_GivesGoalkeepersNoDefensiveContributionCredit()
+    {
+        var gk = MakePlayer(elementType: 1, form: "3.0", minutes: 900, defensiveContributionPer90: 20);
+        var gkWithoutDefensiveWork = MakePlayer(elementType: 1, form: "3.0", minutes: 900, defensiveContributionPer90: 0);
+
+        Assert.Equal(ExpectedPointsEngine.EffectiveRate(gkWithoutDefensiveWork, null), ExpectedPointsEngine.EffectiveRate(gk, null));
     }
 
     [Fact]

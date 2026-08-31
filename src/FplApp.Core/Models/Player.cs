@@ -105,6 +105,14 @@ public class Player
     [JsonPropertyName("expected_goals_conceded")]
     public string ExpectedGoalsConceded { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Per-90 rate of the position-appropriate defensive actions (CBIT for defenders; tackles +
+    /// CBI + recoveries for midfielders/forwards) that count toward FPL's defensive-contribution
+    /// bonus point — pre-computed by FPL, since the exact action mix differs by position.
+    /// </summary>
+    [JsonPropertyName("defensive_contribution_per_90")]
+    public double DefensiveContributionPer90 { get; set; }
+
     [JsonPropertyName("status")]
     public string Status { get; set; } = string.Empty;
 
