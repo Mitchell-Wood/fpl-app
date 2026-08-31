@@ -152,21 +152,119 @@ public class ExpectedPointsEngineTests
     [Fact]
     public void FixtureFactor_FallsBackToFdrOnly_WhenTeamStrengthIsUnavailable()
     {
-        var factor = ExpectedPointsEngine.FixtureFactor(fplDifficulty: 2, playerTeam: null, opponentTeam: null, isHome: true);
+        var factor = ExpectedPointsEngine.FixtureFactor(fplDifficulty: 2, playerTeam: null, opponentTeam: null, isHome: true, elementType: 3);
 
         Assert.Equal((6.0 - 2) / 3.0, factor);
     }
 
     [Fact]
-    public void FixtureFactor_GivesAStrongerTeamMoreCredit_ForTheSameFdrRatedFixture()
+    public void FixtureFactor_GivesAStrongerAttackMoreCredit_ForAMidfielder_OnTheSameFdrRatedFixture()
     {
-        var strongTeam = new Team { Id = 1, StrengthOverallHome = 1400, StrengthOverallAway = 1400 };
-        var weakTeam = new Team { Id = 2, StrengthOverallHome = 1000, StrengthOverallAway = 1000 };
-        var opponent = new Team { Id = 3, StrengthOverallHome = 1200, StrengthOverallAway = 1200 };
+        var strongAttackTeam = new Team { Id = 1, StrengthAttackHome = 1400, StrengthDefenceHome = 1200 };
+        var weakAttackTeam = new Team { Id = 2, StrengthAttackHome = 1000, StrengthDefenceHome = 1200 };
+        var opponent = new Team { Id = 3, StrengthAttackAway = 1200, StrengthDefenceAway = 1200 };
 
-        var strongTeamFactor = ExpectedPointsEngine.FixtureFactor(fplDifficulty: 3, strongTeam, opponent, isHome: true);
-        var weakTeamFactor = ExpectedPointsEngine.FixtureFactor(fplDifficulty: 3, weakTeam, opponent, isHome: true);
+        var strongAttackFactor = ExpectedPointsEngine.FixtureFactor(fplDifficulty: 3, strongAttackTeam, opponent, isHome: true, elementType: 3);
+        var weakAttackFactor = ExpectedPointsEngine.FixtureFactor(fplDifficulty: 3, weakAttackTeam, opponent, isHome: true, elementType: 3);
 
-        Assert.True(strongTeamFactor > weakTeamFactor, "a stronger team should get more credit for an identically FDR-rated fixture");
+        Assert.True(strongAttackFactor > weakAttackFactor, "a stronger attack should get more credit for an identically FDR-rated fixture");
+    }
+
+    [Fact]
+    public void FixtureFactor_GivesAStrongerDefenceMoreCredit_ForADefender_OnTheSameFdrRatedFixture()
+    {
+        var strongDefenceTeam = new Team { Id = 1, StrengthDefenceHome = 1400, StrengthAttackHome = 1200 };
+        var weakDefenceTeam = new Team { Id = 2, StrengthDefenceHome = 1000, StrengthAttackHome = 1200 };
+        var opponent = new Team { Id = 3, StrengthAttackAway = 1200, StrengthDefenceAway = 1200 };
+
+        var strongDefenceFactor = ExpectedPointsEngine.FixtureFactor(fplDifficulty: 3, strongDefenceTeam, opponent, isHome: true, elementType: 2);
+        var weakDefenceFactor = ExpectedPointsEngine.FixtureFactor(fplDifficulty: 3, weakDefenceTeam, opponent, isHome: true, elementType: 2);
+
+        Assert.True(strongDefenceFactor > weakDefenceFactor, "a stronger defence should get more credit for an identically FDR-rated fixture");
+    }
+
+    [Fact]
+    public void FixtureFactor_FallsBackToOverallStrength_WhenPositionSpecificStrengthIsAllZero()
+    {
+        // Reflects real FPL data: strength_attack_*/strength_defence_* are all zero at points in a
+        // season, even though strength_overall_* is populated — the signal shouldn't be lost.
+        var strongTeam = new Team { Id = 1, StrengthOverallHome = 5, StrengthOverallAway = 5 };
+        var weakTeam = new Team { Id = 2, StrengthOverallHome = 2, StrengthOverallAway = 2 };
+        var opponent = new Team { Id = 3, StrengthOverallHome = 3, StrengthOverallAway = 3 };
+
+        var strongTeamFactor = ExpectedPointsEngine.FixtureFactor(fplDifficulty: 3, strongTeam, opponent, isHome: true, elementType: 2);
+        var weakTeamFactor = ExpectedPointsEngine.FixtureFactor(fplDifficulty: 3, weakTeam, opponent, isHome: true, elementType: 2);
+
+        Assert.True(strongTeamFactor > weakTeamFactor);
+    }
+
+    [Fact]
+    public void EffectiveRate_DiscountsForALiveFitnessDoubt()
+    {
+        var fit = MakePlayer(form: "6.0");
+        fit.ChanceOfPlayingNextRound = 100;
+        var doubtful = MakePlayer(form: "6.0");
+        doubtful.ChanceOfPlayingNextRound = 50;
+
+        Assert.Equal(6.0, ExpectedPointsEngine.EffectiveRate(fit, null));
+        Assert.Equal(3.0, ExpectedPointsEngine.EffectiveRate(doubtful, null));
+    }
+
+    [Fact]
+    public void EffectiveRate_AppliesNoFitnessDiscount_WhenChanceOfPlayingIsUnset()
+    {
+        var player = MakePlayer(form: "6.0");
+        Assert.Null(player.ChanceOfPlayingNextRound);
+
+        Assert.Equal(6.0, ExpectedPointsEngine.EffectiveRate(player, null));
+    }
+
+    [Fact]
+    public void EffectiveRate_CreditsMidfieldersForCleanSheets_ButNotForwards()
+    {
+        var midWithCleanSheetChance = MakePlayer(elementType: 3, form: "5.0", minutes: 900, xgc: "0"); // xGC 0 -> ~certain clean sheet
+        var midWithNoCleanSheetChance = MakePlayer(elementType: 3, form: "5.0", minutes: 900, xgc: "3.0"); // high xGC -> ~no clean sheet
+        Assert.True(
+            ExpectedPointsEngine.EffectiveRate(midWithCleanSheetChance, null) > ExpectedPointsEngine.EffectiveRate(midWithNoCleanSheetChance, null),
+            "a midfielder likely to keep a clean sheet should rate higher than one who isn't");
+
+        var fwdWithCleanSheetChance = MakePlayer(elementType: 4, form: "5.0", minutes: 900, xgc: "0");
+        var fwdWithNoCleanSheetChance = MakePlayer(elementType: 4, form: "5.0", minutes: 900, xgc: "3.0");
+        Assert.Equal(
+            ExpectedPointsEngine.EffectiveRate(fwdWithCleanSheetChance, null),
+            ExpectedPointsEngine.EffectiveRate(fwdWithNoCleanSheetChance, null));
+    }
+
+    [Fact]
+    public void EffectiveRate_CreditsGoalkeepersForSaves()
+    {
+        var busyKeeper = MakePlayer(elementType: 1, form: "2.0", minutes: 900);
+        busyKeeper.SavesPer90 = 6.0;
+        var quietKeeper = MakePlayer(elementType: 1, form: "2.0", minutes: 900);
+        quietKeeper.SavesPer90 = 0.0;
+
+        Assert.True(ExpectedPointsEngine.EffectiveRate(busyKeeper, null) > ExpectedPointsEngine.EffectiveRate(quietKeeper, null));
+    }
+
+    [Fact]
+    public void EffectiveRate_PenalizesACardProneHistory()
+    {
+        var cardProne = MakePlayer(elementType: 2, form: "5.0", minutes: 900);
+        cardProne.YellowCards = 8; // roughly 0.8/match over 10 matches
+
+        var cardFree = MakePlayer(elementType: 2, form: "5.0", minutes: 900);
+
+        Assert.True(ExpectedPointsEngine.EffectiveRate(cardProne, null) < ExpectedPointsEngine.EffectiveRate(cardFree, null));
+    }
+
+    [Fact]
+    public void EffectiveRate_CreditsAHistoricalBonusRate()
+    {
+        var bonusMagnet = MakePlayer(elementType: 3, form: "5.0", minutes: 900);
+        bonusMagnet.Bonus = 20; // 2/match over 10 matches
+
+        var noBonusHistory = MakePlayer(elementType: 3, form: "5.0", minutes: 900);
+
+        Assert.True(ExpectedPointsEngine.EffectiveRate(bonusMagnet, null) > ExpectedPointsEngine.EffectiveRate(noBonusHistory, null));
     }
 }

@@ -42,31 +42,34 @@ public static class ExpectedPointsEngine
 
     /// <summary>Expected points for one specific fixture — the rate signal scaled by fixture difficulty.</summary>
     public static double EstimatePoints(Player player, Team? playerTeam, int fplDifficulty, Team? opponentTeam, bool isHome)
-        => EffectiveRate(player, playerTeam) * FixtureFactor(fplDifficulty, playerTeam, opponentTeam, isHome);
+        => EffectiveRate(player, playerTeam) * FixtureFactor(fplDifficulty, playerTeam, opponentTeam, isHome, player.ElementType);
 
     /// <summary>
     /// The blended per-fixture point rate: recent form (or FPL's own next-gameweek prediction, or
     /// season points-per-game, whichever is the best signal available), blended with an
     /// underlying-stats estimate once there's enough of a minutes sample to trust it, boosted for
-    /// primary set-piece takers, and shrunk for players who haven't nailed down regular minutes.
+    /// primary set-piece takers, and shrunk both for players who haven't nailed down regular minutes
+    /// and for a live fitness doubt on the next fixture.
     /// </summary>
     public static double EffectiveRate(Player player, Team? playerTeam)
     {
         var actualRate = ActualRate(player);
         var blended = BlendWithUnderlyingStats(player, actualRate);
         var withSetPieces = blended + PlayerSetPieceBonus(player);
-        return withSetPieces * MinutesReliability(player, playerTeam);
+        return withSetPieces * MinutesReliability(player, playerTeam) * PlayingChanceReliability(player);
     }
 
     /// <summary>
     /// Blends FPL's own 1-5 fixture difficulty rating with a continuous factor derived from each
-    /// team's actual current-season overall strength — FPL's FDR only reflects the opponent, so it
-    /// rates the same opponent identically for a title-chasing team and a relegation-battler even
-    /// though the strong team should get more credit for an "easy" fixture. Falls back to the plain
-    /// FDR-only factor when strength data isn't available (e.g. in tests, or teams before the ratings
-    /// have settled).
+    /// team's actual current-season strength — FPL's FDR only reflects the opponent, so it rates the
+    /// same opponent identically for a title-chasing team and a relegation-battler even though the
+    /// strong team should get more credit for an "easy" fixture. Uses position-specific strength (a
+    /// defensive player's clean-sheet chance depends on their team's defence vs the opponent's
+    /// attack; an attacking player's scoring chance depends on the reverse) rather than each team's
+    /// overall rating. Falls back to the plain FDR-only factor when strength data isn't available
+    /// (e.g. in tests, or before a season's ratings have settled).
     /// </summary>
-    public static double FixtureFactor(int fplDifficulty, Team? playerTeam, Team? opponentTeam, bool isHome)
+    public static double FixtureFactor(int fplDifficulty, Team? playerTeam, Team? opponentTeam, bool isHome, int elementType)
     {
         var fdrFactor = (6.0 - fplDifficulty) / 3.0;
         if (playerTeam is null || opponentTeam is null)
@@ -74,8 +77,22 @@ public static class ExpectedPointsEngine
             return fdrFactor;
         }
 
-        var ownStrength = isHome ? playerTeam.StrengthOverallHome : playerTeam.StrengthOverallAway;
-        var oppStrength = isHome ? opponentTeam.StrengthOverallAway : opponentTeam.StrengthOverallHome;
+        var isDefensivePosition = elementType is GoalkeeperType or DefenderType;
+        var ownStrength = isDefensivePosition
+            ? (isHome ? playerTeam.StrengthDefenceHome : playerTeam.StrengthDefenceAway)
+            : (isHome ? playerTeam.StrengthAttackHome : playerTeam.StrengthAttackAway);
+        var oppStrength = isDefensivePosition
+            ? (isHome ? opponentTeam.StrengthAttackAway : opponentTeam.StrengthAttackHome)
+            : (isHome ? opponentTeam.StrengthDefenceAway : opponentTeam.StrengthDefenceHome);
+
+        if (ownStrength <= 0 || oppStrength <= 0)
+        {
+            // FPL doesn't always populate the position-specific attack/defence split (e.g. it's all
+            // zeroes early in a season) — fall back to each team's overall strength rather than
+            // giving up the team-strength signal entirely.
+            ownStrength = isHome ? playerTeam.StrengthOverallHome : playerTeam.StrengthOverallAway;
+            oppStrength = isHome ? opponentTeam.StrengthOverallAway : opponentTeam.StrengthOverallHome;
+        }
         if (ownStrength <= 0 || oppStrength <= 0)
         {
             return fdrFactor;
@@ -135,18 +152,36 @@ public static class ExpectedPointsEngine
         };
         var attackingPoints = xgiPerMatch * pointsPerGoalInvolvement;
 
-        var defensivePoints = 0.0;
-        if (player.ElementType is GoalkeeperType or DefenderType)
+        var xgcPerMatch = ParseDecimal(player.ExpectedGoalsConceded) / matchesPlayed;
+        // Rough logistic-style approximation: expected goals conceded of 0 implies a clean sheet is
+        // close to certain, 1.5+ implies it's close to never happening.
+        var cleanSheetProbability = Math.Clamp(1.0 - (xgcPerMatch / 1.5), 0, 1);
+
+        var defensivePoints = player.ElementType switch
         {
-            var xgcPerMatch = ParseDecimal(player.ExpectedGoalsConceded) / matchesPlayed;
-            // Rough logistic-style approximation: expected goals conceded of 0 implies a clean sheet
-            // is close to certain, 1.5+ implies it's close to never happening.
-            var cleanSheetProbability = Math.Clamp(1.0 - (xgcPerMatch / 1.5), 0, 1);
-            defensivePoints = cleanSheetProbability * 4.0;
-        }
+            // GK/DEF: 4pts for a clean sheet, minus ~1pt per 2 goals conceded (FPL's actual rule).
+            GoalkeeperType or DefenderType => (cleanSheetProbability * 4.0) - (xgcPerMatch * 0.5),
+            // MID also earns 1pt for a clean sheet (but has no goals-conceded penalty).
+            MidfielderType => cleanSheetProbability * 1.0,
+            _ => 0.0,
+        };
+
+        // 1pt per 3 saves — goalkeeper-only, and already a per-match rate so no matches-played
+        // division needed.
+        var savesPoints = player.ElementType == GoalkeeperType ? player.SavesPer90 / 3.0 : 0.0;
+
+        // The season's own bonus-points rate is used as a proxy for future bonus (BPS rewards goals,
+        // assists, clean sheets, and defensive actions — the same inputs already driving the rest of
+        // this estimate — so a player's historical bonus rate is a reasonable stand-in for a bonus
+        // system that isn't otherwise modeled here).
+        var bonusPoints = player.Bonus / matchesPlayed;
+
+        // Card-prone players lose a small amount of expected value every match: -1pt per yellow,
+        // -3pts per red, at their season rate.
+        var cardPenalty = -((player.YellowCards / matchesPlayed) + (3.0 * player.RedCards / matchesPlayed));
 
         const double appearancePoints = 2.0; // guaranteed for any player who starts (60+ minutes)
-        return attackingPoints + defensivePoints + appearancePoints + DefensiveContributionPointsFor(player);
+        return attackingPoints + defensivePoints + savesPoints + bonusPoints + cardPenalty + appearancePoints + DefensiveContributionPointsFor(player);
     }
 
     /// <summary>
@@ -208,6 +243,16 @@ public static class ExpectedPointsEngine
         var minutesShare = Math.Clamp(player.Minutes / (playerTeam.Played * 90.0), 0, 1);
         return MinReliabilityMultiplier + ((1 - MinReliabilityMultiplier) * minutesShare);
     }
+
+    /// <summary>
+    /// FPL's own "chance of playing next round" percentage (a knock, late fitness test, etc.) —
+    /// applied as a straight probability discount. Strictly this only describes the immediate next
+    /// fixture, so applying it across a multi-week lookahead slightly over-penalizes later weeks in
+    /// the window, but doing so is still far more accurate than ignoring a live fitness doubt
+    /// entirely, which is what happened before.
+    /// </summary>
+    private static double PlayingChanceReliability(Player player)
+        => player.ChanceOfPlayingNextRound is { } chance ? Math.Clamp(chance / 100.0, 0, 1) : 1.0;
 
     private static double ParseDecimal(string value)
         => double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) ? parsed : 0;

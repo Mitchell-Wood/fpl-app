@@ -72,7 +72,7 @@ public class PlayerRecommendationService
 
         var entries = rawDifficultyByTeam.GetValueOrDefault(player.Team, []);
         var avgFixtureFactor = entries.Count > 0
-            ? entries.Average(e => ExpectedPointsEngine.FixtureFactor(e.Difficulty, playerTeam, teamsById.GetValueOrDefault(e.OpponentTeamId), e.IsHome))
+            ? entries.Average(e => ExpectedPointsEngine.FixtureFactor(e.Difficulty, playerTeam, teamsById.GetValueOrDefault(e.OpponentTeamId), e.IsHome, player.ElementType))
             : 1.0;
 
         return baseScore * avgFixtureFactor;

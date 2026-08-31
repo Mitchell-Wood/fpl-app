@@ -113,6 +113,9 @@ public class Player
     [JsonPropertyName("defensive_contribution_per_90")]
     public double DefensiveContributionPer90 { get; set; }
 
+    [JsonPropertyName("saves_per_90")]
+    public double SavesPer90 { get; set; }
+
     [JsonPropertyName("status")]
     public string Status { get; set; } = string.Empty;
 
