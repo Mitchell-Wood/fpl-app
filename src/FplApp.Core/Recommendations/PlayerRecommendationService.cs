@@ -1,4 +1,3 @@
-using System.Globalization;
 using FplApp.Core.Models;
 
 namespace FplApp.Core.Recommendations;
@@ -7,8 +6,8 @@ namespace FplApp.Core.Recommendations;
 public class PlayerRecommendationService
 {
     /// <summary>
-    /// Ranks available players by recent form, FPL's own next-gameweek expected points, points-per-
-    /// cost, and how easy their upcoming fixtures are, optionally restricted to one position.
+    /// Ranks available players by <see cref="ExpectedPointsEngine.EffectiveRate"/>, points-per-cost,
+    /// and how easy their upcoming fixtures are, optionally restricted to one position.
     /// </summary>
     /// <param name="bootstrap">The bootstrap-static data to recommend from.</param>
     /// <param name="fixtures">All fixtures, used to weight players with easier upcoming runs.</param>
@@ -29,7 +28,8 @@ public class PlayerRecommendationService
         ArgumentNullException.ThrowIfNull(bootstrap);
         ArgumentNullException.ThrowIfNull(fixtures);
 
-        var difficultyByTeam = FixtureDifficultyCalculator.AverageUpcomingDifficultyByTeam(fixtures, fixtureLookaheadWeeks);
+        var rawDifficultyByTeam = FixtureDifficultyCalculator.RawUpcomingDifficultiesByTeam(fixtures, fixtureLookaheadWeeks);
+        var teamsById = bootstrap.Teams.ToDictionary(t => t.Id);
 
         var candidates = bootstrap.Elements
             .Where(p => p.Status == "a") // available (not injured/suspended/unavailable)
@@ -38,44 +38,43 @@ public class PlayerRecommendationService
             .Where(p => maxCost is null || p.NowCost <= maxCost);
 
         return candidates
-            .OrderByDescending(p => Score(p, difficultyByTeam))
+            .OrderByDescending(p => Score(p, rawDifficultyByTeam, teamsById))
             .Take(count)
             .ToList();
     }
 
     /// <summary>
-    /// Scores a player by recent form, FPL's own next-gameweek expected points, points-per-cost,
-    /// and upcoming fixture ease — exposed internally so other services (e.g.
+    /// Scores a player by <see cref="ExpectedPointsEngine.EffectiveRate"/>, points-per-cost, and
+    /// upcoming fixture ease — exposed internally so other services (e.g.
     /// <see cref="TransferPlannerService"/>) can compare a currently-owned player against
     /// candidates on the same footing.
     /// </summary>
-    internal static double Score(Player player, IReadOnlyDictionary<int, double> difficultyByTeam)
+    internal static double Score(
+        Player player,
+        IReadOnlyDictionary<int, List<FixtureDifficultyEntry>> rawDifficultyByTeam,
+        IReadOnlyDictionary<int, Team> teamsById)
     {
-        var form = ParseDecimal(player.Form);
-        var expectedPointsNext = ParseDecimal(player.ExpectedPointsNext);
         var costInMillions = player.NowCost / 10.0;
         if (costInMillions <= 0)
         {
             return 0;
         }
 
-        // Form and FPL's own next-gameweek expected-points estimate are weighted as the two
-        // leading signals for "how good is this player right now" — ep_next matters especially
-        // pre-season or right after a player's form has reset to 0, when recent form alone is
-        // uninformative but FPL's model already has a prediction. Points-per-cost is kept as a
-        // smaller tiebreaker so cheaper-for-the-same-output players still edge out pricier twins.
+        var playerTeam = teamsById.GetValueOrDefault(player.Team);
+        var effectiveRate = ExpectedPointsEngine.EffectiveRate(player, playerTeam);
+
+        // The blended rate is the leading signal for "how good is this player right now" (weighted
+        // x4 to keep it the dominant term, matching the old form*2+ep_next*2 weighting). Points-per-
+        // cost is kept as a smaller tiebreaker so cheaper-for-the-same-output players still edge out
+        // pricier twins.
         var valuePerCost = player.TotalPoints / costInMillions;
-        var baseScore = (form * 2) + (expectedPointsNext * 2) + valuePerCost;
+        var baseScore = (effectiveRate * 4) + valuePerCost;
 
-        // Scale by upcoming fixture ease over the chosen lookahead window: difficulty 3 (average)
-        // leaves the score unchanged, easier runs boost it, tougher runs reduce it. Teams with no
-        // upcoming fixtures in the window (or not found) are treated as average.
-        var avgDifficulty = difficultyByTeam.GetValueOrDefault(player.Team, 3.0);
-        var fixtureFactor = (6.0 - avgDifficulty) / 3.0;
+        var entries = rawDifficultyByTeam.GetValueOrDefault(player.Team, []);
+        var avgFixtureFactor = entries.Count > 0
+            ? entries.Average(e => ExpectedPointsEngine.FixtureFactor(e.Difficulty, playerTeam, teamsById.GetValueOrDefault(e.OpponentTeamId), e.IsHome))
+            : 1.0;
 
-        return baseScore * fixtureFactor;
+        return baseScore * avgFixtureFactor;
     }
-
-    private static double ParseDecimal(string value)
-        => double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) ? parsed : 0;
 }

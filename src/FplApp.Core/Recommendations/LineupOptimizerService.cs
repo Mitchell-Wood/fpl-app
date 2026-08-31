@@ -1,4 +1,3 @@
-using System.Globalization;
 using FplApp.Core.Models;
 
 namespace FplApp.Core.Recommendations;
@@ -30,6 +29,7 @@ public class LineupOptimizerService
         ArgumentNullException.ThrowIfNull(picks);
 
         var playersById = bootstrap.Elements.ToDictionary(p => p.Id);
+        var teamsById = bootstrap.Teams.ToDictionary(t => t.Id);
         var eventFixtures = fixtures.Where(f => f.Event == eventId).ToList();
 
         var scored = new List<(int PlayerId, int ElementType, double ExpectedPoints)>();
@@ -40,7 +40,7 @@ public class LineupOptimizerService
                 continue;
             }
 
-            scored.Add((player.Id, player.ElementType, ExpectedPointsFor(player, eventFixtures)));
+            scored.Add((player.Id, player.ElementType, ExpectedPointsFor(player, eventFixtures, teamsById)));
         }
 
         var byType = new Dictionary<int, List<(int PlayerId, double ExpectedPoints)>>
@@ -127,25 +127,20 @@ public class LineupOptimizerService
             .Select(s => (s.PlayerId, s.ExpectedPoints))
             .ToList();
 
-    private static double ExpectedPointsFor(Player player, List<Fixture> eventFixtures)
+    private static double ExpectedPointsFor(Player player, List<Fixture> eventFixtures, IReadOnlyDictionary<int, Team> teamsById)
     {
         var teamFixtures = eventFixtures.Where(f => f.TeamH == player.Team || f.TeamA == player.Team);
-
-        var form = ParseDecimal(player.Form);
-        var effectiveForm = form > 0 ? form : ParseDecimal(player.PointsPerGame);
+        var playerTeam = teamsById.GetValueOrDefault(player.Team);
 
         double expected = 0;
         foreach (var fixture in teamFixtures)
         {
             var isHome = fixture.TeamH == player.Team;
+            var opponentId = isHome ? fixture.TeamA : fixture.TeamH;
             var difficulty = isHome ? fixture.TeamHDifficulty : fixture.TeamADifficulty;
-            var fixtureFactor = (6.0 - difficulty) / 3.0;
-            expected += effectiveForm * fixtureFactor;
+            expected += ExpectedPointsEngine.EstimatePoints(player, playerTeam, difficulty, teamsById.GetValueOrDefault(opponentId), isHome);
         }
 
         return player.Status == "a" ? expected : expected + UnavailablePenalty;
     }
-
-    private static double ParseDecimal(string value)
-        => double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) ? parsed : 0;
 }

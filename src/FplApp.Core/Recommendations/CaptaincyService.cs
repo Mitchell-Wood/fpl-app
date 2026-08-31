@@ -1,4 +1,3 @@
-using System.Globalization;
 using FplApp.Core.Models;
 
 namespace FplApp.Core.Recommendations;
@@ -30,12 +29,8 @@ public class CaptaincyService
                 continue;
             }
 
+            var playerTeam = teamsById.GetValueOrDefault(player.Team);
             var teamFixtures = eventFixtures.Where(f => f.TeamH == player.Team || f.TeamA == player.Team).ToList();
-
-            // Recent form is the best signal once the season has some games in; before that
-            // (or for a player short on minutes) fall back to last season's points-per-game.
-            var form = ParseDecimal(player.Form);
-            var effectiveForm = form > 0 ? form : ParseDecimal(player.PointsPerGame);
 
             var fixtureDtos = new List<CaptainFixture>();
             double expectedPoints = 0;
@@ -45,18 +40,16 @@ public class CaptaincyService
                 var isHome = fixture.TeamH == player.Team;
                 var opponentId = isHome ? fixture.TeamA : fixture.TeamH;
                 var difficulty = isHome ? fixture.TeamHDifficulty : fixture.TeamADifficulty;
+                var opponentTeam = teamsById.GetValueOrDefault(opponentId);
 
                 fixtureDtos.Add(new CaptainFixture
                 {
-                    Opponent = teamsById.GetValueOrDefault(opponentId)?.ShortName ?? "?",
+                    Opponent = opponentTeam?.ShortName ?? "?",
                     Venue = isHome ? "H" : "A",
                     Difficulty = difficulty,
                 });
 
-                // Same difficulty-scaling formula used for player recommendations: difficulty 3
-                // (average) leaves the score unchanged, easier fixtures boost it.
-                var fixtureFactor = (6.0 - difficulty) / 3.0;
-                expectedPoints += effectiveForm * fixtureFactor;
+                expectedPoints += ExpectedPointsEngine.EstimatePoints(player, playerTeam, difficulty, opponentTeam, isHome);
             }
 
             results.Add(new CaptainSuggestion
@@ -79,7 +72,4 @@ public class CaptaincyService
 
         return results.OrderByDescending(r => r.ExpectedPoints).ToList();
     }
-
-    private static double ParseDecimal(string value)
-        => double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) ? parsed : 0;
 }

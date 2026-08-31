@@ -36,6 +36,7 @@ public class SquadAnalysisService
             var team = teamsById.GetValueOrDefault(player.Team);
             var avgDifficulty = difficultyByTeam.GetValueOrDefault(player.Team, 3.0);
             var form = ParseDecimal(player.Form);
+            var effectiveRate = ExpectedPointsEngine.EffectiveRate(player, team);
             var flags = new List<string>();
 
             if (player.Status != "a")
@@ -47,7 +48,7 @@ public class SquadAnalysisService
                 flags.Add($"Doubtful ({chance}% chance of playing)");
             }
 
-            if (seasonStarted && form < 2.0)
+            if (seasonStarted && effectiveRate < 2.0)
             {
                 flags.Add("Poor recent form");
             }

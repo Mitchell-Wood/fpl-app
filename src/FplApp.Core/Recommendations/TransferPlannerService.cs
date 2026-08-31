@@ -34,6 +34,7 @@ public class TransferPlannerService
         int candidatesPerPlayer)
     {
         var playersById = bootstrap.Elements.ToDictionary(p => p.Id);
+        var teamsById = bootstrap.Teams.ToDictionary(t => t.Id);
         var ownedPlayerIds = squad.Select(p => p.PlayerId).ToHashSet();
         var rawDifficultyByTeam = FixtureDifficultyCalculator.RawUpcomingDifficultiesByTeam(fixtures, fixtureLookaheadWeeks);
 
@@ -58,8 +59,8 @@ public class TransferPlannerService
             // Points gain is the user-facing "how good is this transfer" number and what ranks
             // suggestions — directly comparable to the cost of a -4 hit. Kept even when negative so
             // the full picture (including transfers that would cost points) can be shown.
-            var pointsGain = PlayerProjection.EstimateProjectedPoints(candidates[0], rawDifficultyByTeam)
-                - PlayerProjection.EstimateProjectedPoints(currentPlayer, rawDifficultyByTeam);
+            var pointsGain = PlayerProjection.EstimateProjectedPoints(candidates[0], rawDifficultyByTeam, teamsById)
+                - PlayerProjection.EstimateProjectedPoints(currentPlayer, rawDifficultyByTeam, teamsById);
 
             results.Add(new CandidateSuggestion(pick, candidates, budget, pointsGain));
         }
@@ -200,7 +201,6 @@ public class TransferPlannerService
         var teamsById = bootstrap.Teams.ToDictionary(t => t.Id);
         var playersById = bootstrap.Elements.ToDictionary(p => p.Id);
         var ownedPlayerIds = squad.Select(p => p.PlayerId).ToHashSet();
-        var difficultyByTeam = FixtureDifficultyCalculator.AverageUpcomingDifficultyByTeam(fixtures, fixtureLookaheadWeeks);
         var rawDifficultyByTeam = FixtureDifficultyCalculator.RawUpcomingDifficultiesByTeam(fixtures, fixtureLookaheadWeeks);
 
         FundedUpgradeSuggestion? best = null;
@@ -230,8 +230,8 @@ public class TransferPlannerService
                 continue;
             }
 
-            var downgradeScoreDelta = PlayerRecommendationService.Score(downgradeTo, difficultyByTeam)
-                - PlayerRecommendationService.Score(downgradeFromPlayer, difficultyByTeam);
+            var downgradeScoreDelta = PlayerRecommendationService.Score(downgradeTo, rawDifficultyByTeam, teamsById)
+                - PlayerRecommendationService.Score(downgradeFromPlayer, rawDifficultyByTeam, teamsById);
 
             foreach (var upgradeFrom in squad)
             {
@@ -267,8 +267,8 @@ public class TransferPlannerService
                     continue;
                 }
 
-                var upgradeScoreDelta = PlayerRecommendationService.Score(upgradeTo, difficultyByTeam)
-                    - PlayerRecommendationService.Score(upgradeFromPlayer, difficultyByTeam);
+                var upgradeScoreDelta = PlayerRecommendationService.Score(upgradeTo, rawDifficultyByTeam, teamsById)
+                    - PlayerRecommendationService.Score(upgradeFromPlayer, rawDifficultyByTeam, teamsById);
 
                 var netGain = downgradeScoreDelta + upgradeScoreDelta;
                 if (netGain <= bestNetGain)
@@ -277,8 +277,8 @@ public class TransferPlannerService
                 }
 
                 bestNetGain = netGain;
-                var netPointsGain = (PlayerProjection.EstimateProjectedPoints(downgradeTo, rawDifficultyByTeam) - PlayerProjection.EstimateProjectedPoints(downgradeFromPlayer, rawDifficultyByTeam))
-                    + (PlayerProjection.EstimateProjectedPoints(upgradeTo, rawDifficultyByTeam) - PlayerProjection.EstimateProjectedPoints(upgradeFromPlayer, rawDifficultyByTeam));
+                var netPointsGain = (PlayerProjection.EstimateProjectedPoints(downgradeTo, rawDifficultyByTeam, teamsById) - PlayerProjection.EstimateProjectedPoints(downgradeFromPlayer, rawDifficultyByTeam, teamsById))
+                    + (PlayerProjection.EstimateProjectedPoints(upgradeTo, rawDifficultyByTeam, teamsById) - PlayerProjection.EstimateProjectedPoints(upgradeFromPlayer, rawDifficultyByTeam, teamsById));
 
                 best = new FundedUpgradeSuggestion
                 {

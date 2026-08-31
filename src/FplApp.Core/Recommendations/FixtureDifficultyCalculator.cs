@@ -2,18 +2,25 @@ using FplApp.Core.Models;
 
 namespace FplApp.Core.Recommendations;
 
+/// <summary>
+/// One upcoming fixture's FPL difficulty rating for a team, plus who it's against and where — kept
+/// alongside the difficulty (rather than averaged away) so callers can blend in the opponent's and
+/// team's actual current-season strength via <see cref="ExpectedPointsEngine.FixtureFactor"/>.
+/// </summary>
+public readonly record struct FixtureDifficultyEntry(int Difficulty, int OpponentTeamId, bool IsHome);
+
 public static class FixtureDifficultyCalculator
 {
     /// <summary>Average fixture difficulty per team over the next N unplayed gameweeks.</summary>
     public static Dictionary<int, double> AverageUpcomingDifficultyByTeam(IReadOnlyList<Fixture> fixtures, int lookaheadWeeks)
-        => RawUpcomingDifficultiesByTeam(fixtures, lookaheadWeeks).ToDictionary(kv => kv.Key, kv => kv.Value.Average());
+        => RawUpcomingDifficultiesByTeam(fixtures, lookaheadWeeks).ToDictionary(kv => kv.Key, kv => kv.Value.Average(e => e.Difficulty));
 
     /// <summary>
     /// Each team's per-fixture difficulty over the next N unplayed gameweeks, left unaveraged so
     /// callers can sum a per-fixture contribution instead — naturally yielding nothing for a blank
     /// gameweek and counting twice for a double.
     /// </summary>
-    public static Dictionary<int, List<int>> RawUpcomingDifficultiesByTeam(IReadOnlyList<Fixture> fixtures, int lookaheadWeeks)
+    public static Dictionary<int, List<FixtureDifficultyEntry>> RawUpcomingDifficultiesByTeam(IReadOnlyList<Fixture> fixtures, int lookaheadWeeks)
     {
         var nextEvent = fixtures
             .Where(f => !f.Finished && f.Event.HasValue)
@@ -36,27 +43,27 @@ public static class FixtureDifficultyCalculator
     /// Bench Boost week) rather than a lookahead window from the next unplayed gameweek. A team
     /// with no fixture that week is simply absent; a double gameweek yields both fixtures.
     /// </summary>
-    public static Dictionary<int, List<int>> RawDifficultiesForEvent(IReadOnlyList<Fixture> fixtures, int eventId)
+    public static Dictionary<int, List<FixtureDifficultyEntry>> RawDifficultiesForEvent(IReadOnlyList<Fixture> fixtures, int eventId)
         => BuildRawDifficulties(fixtures.Where(f => f.Event == eventId));
 
-    private static Dictionary<int, List<int>> BuildRawDifficulties(IEnumerable<Fixture> fixtures)
+    private static Dictionary<int, List<FixtureDifficultyEntry>> BuildRawDifficulties(IEnumerable<Fixture> fixtures)
     {
-        var difficultiesByTeam = new Dictionary<int, List<int>>();
+        var difficultiesByTeam = new Dictionary<int, List<FixtureDifficultyEntry>>();
 
-        void AddDifficulty(int teamId, int difficulty)
+        void AddDifficulty(int teamId, int difficulty, int opponentTeamId, bool isHome)
         {
             if (!difficultiesByTeam.TryGetValue(teamId, out var list))
             {
                 list = [];
                 difficultiesByTeam[teamId] = list;
             }
-            list.Add(difficulty);
+            list.Add(new FixtureDifficultyEntry(difficulty, opponentTeamId, isHome));
         }
 
         foreach (var fixture in fixtures)
         {
-            AddDifficulty(fixture.TeamH, fixture.TeamHDifficulty);
-            AddDifficulty(fixture.TeamA, fixture.TeamADifficulty);
+            AddDifficulty(fixture.TeamH, fixture.TeamHDifficulty, fixture.TeamA, isHome: true);
+            AddDifficulty(fixture.TeamA, fixture.TeamADifficulty, fixture.TeamH, isHome: false);
         }
 
         return difficultiesByTeam;

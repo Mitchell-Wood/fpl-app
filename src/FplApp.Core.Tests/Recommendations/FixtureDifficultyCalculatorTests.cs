@@ -61,7 +61,7 @@ public class FixtureDifficultyCalculatorTests
 
         var result = FixtureDifficultyCalculator.RawUpcomingDifficultiesByTeam(fixtures, lookaheadWeeks: 1);
 
-        Assert.Equal([2, 4], result[1]);
+        Assert.Equal([2, 4], result[1].Select(e => e.Difficulty));
     }
 
     [Fact]
@@ -76,7 +76,7 @@ public class FixtureDifficultyCalculatorTests
 
         var result = FixtureDifficultyCalculator.RawUpcomingDifficultiesByTeam(fixtures, lookaheadWeeks: 2);
 
-        Assert.Equal([2, 3], result[1]);
+        Assert.Equal([2, 3], result[1].Select(e => e.Difficulty));
     }
 
     [Fact]
@@ -90,8 +90,8 @@ public class FixtureDifficultyCalculatorTests
 
         var result = FixtureDifficultyCalculator.RawUpcomingDifficultiesByTeam(fixtures, lookaheadWeeks: 1);
 
-        Assert.Equal([3], result[1]);
-        Assert.Equal([2], result[2]);
+        Assert.Equal([3], result[1].Select(e => e.Difficulty));
+        Assert.Equal([2], result[2].Select(e => e.Difficulty));
     }
 
     [Fact]
@@ -120,8 +120,8 @@ public class FixtureDifficultyCalculatorTests
 
         var result = FixtureDifficultyCalculator.RawDifficultiesForEvent(fixtures, eventId: 2);
 
-        Assert.Equal([2], result[1]);
-        Assert.Equal([3], result[2]);
+        Assert.Equal([2], result[1].Select(e => e.Difficulty));
+        Assert.Equal([3], result[2].Select(e => e.Difficulty));
     }
 
     [Fact]
@@ -145,6 +145,6 @@ public class FixtureDifficultyCalculatorTests
 
         var result = FixtureDifficultyCalculator.RawDifficultiesForEvent(fixtures, eventId: 2);
 
-        Assert.Equal([2, 4], result[1]);
+        Assert.Equal([2, 4], result[1].Select(e => e.Difficulty));
     }
 }

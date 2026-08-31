@@ -1,4 +1,3 @@
-using System.Globalization;
 using FplApp.Core.Models;
 
 namespace FplApp.Core.Recommendations;
@@ -11,26 +10,21 @@ namespace FplApp.Core.Recommendations;
 internal static class PlayerProjection
 {
     /// <summary>
-    /// Recent form (or FPL's own expected-points-next-gameweek, or season points-per-game,
-    /// whichever is the best signal available) applied to each upcoming fixture and scaled by
-    /// that fixture's difficulty. Summing per-fixture — rather than using an average — means a
-    /// blank gameweek contributes nothing and a double gameweek counts twice, automatically.
+    /// Sums <see cref="ExpectedPointsEngine.EstimatePoints"/> across each upcoming fixture — summing
+    /// per-fixture (rather than using an average) means a blank gameweek contributes nothing and a
+    /// double gameweek counts twice, automatically.
     /// </summary>
-    public static double EstimateProjectedPoints(Player player, IReadOnlyDictionary<int, List<int>> rawDifficultiesByTeam)
+    public static double EstimateProjectedPoints(
+        Player player,
+        IReadOnlyDictionary<int, List<FixtureDifficultyEntry>> rawDifficultiesByTeam,
+        IReadOnlyDictionary<int, Team> teamsById)
     {
-        var form = ParseDecimal(player.Form);
-        var expectedPointsNext = ParseDecimal(player.ExpectedPointsNext);
-        var pointsPerGame = ParseDecimal(player.PointsPerGame);
-        var effectiveRate = form > 0 ? form : (expectedPointsNext > 0 ? expectedPointsNext : pointsPerGame);
-
-        if (!rawDifficultiesByTeam.TryGetValue(player.Team, out var difficulties) || difficulties.Count == 0)
+        if (!rawDifficultiesByTeam.TryGetValue(player.Team, out var entries) || entries.Count == 0)
         {
             return 0;
         }
 
-        return difficulties.Sum(difficulty => effectiveRate * ((6.0 - difficulty) / 3.0));
+        var playerTeam = teamsById.GetValueOrDefault(player.Team);
+        return entries.Sum(e => ExpectedPointsEngine.EstimatePoints(player, playerTeam, e.Difficulty, teamsById.GetValueOrDefault(e.OpponentTeamId), e.IsHome));
     }
-
-    private static double ParseDecimal(string value)
-        => double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) ? parsed : 0;
 }
