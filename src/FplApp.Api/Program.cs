@@ -286,6 +286,8 @@ app.MapGet("/api/league-standings", async (int leagueId, int? page, IFplDataServ
         // so it's only worth the round-trips for small leagues you can eyeball at a glance.
         Dictionary<int, int>? fixturesLeftByEntry = null;
         Dictionary<int, bool>? captainYetToPlayByEntry = null;
+        Dictionary<int, double>? squadValueByEntry = null;
+        Dictionary<int, double>? bankByEntry = null;
         Dictionary<int, Dictionary<string, string>>? chipStatusByEntry = null;
         Dictionary<int, int>? estimatedFreeTransfersByEntry = null;
         Dictionary<int, double>? cloneRatingByEntry = null;
@@ -317,6 +319,15 @@ app.MapGet("/api/league-standings", async (int leagueId, int? page, IFplDataServ
                     .Select(p => (p.Entry, YetToPlay: FixturesRemainingCalculator.CaptainHasFixtureRemaining(bootstrap, fixtures, p.Picks!, eventId)))
                     .Where(p => p.YetToPlay.HasValue)
                     .ToDictionary(p => p.Entry, p => p.YetToPlay!.Value);
+
+                // FPL reports both in tenths of a million (e.g. 1005 = £100.5m).
+                squadValueByEntry = perEntryData
+                    .Where(p => p.Picks is not null)
+                    .ToDictionary(p => p.Entry, p => p.Picks!.EntryHistory.Value / 10.0);
+
+                bankByEntry = perEntryData
+                    .Where(p => p.Picks is not null)
+                    .ToDictionary(p => p.Entry, p => p.Picks!.EntryHistory.Bank / 10.0);
 
                 chipStatusByEntry = perEntryData.ToDictionary(p => p.Entry, p => BuildChipStatus(p.Picks?.ActiveChip, p.History?.Chips, eventId));
 
@@ -353,6 +364,8 @@ app.MapGet("/api/league-standings", async (int leagueId, int? page, IFplDataServ
                 fixturesLeft = fixturesLeftByEntry != null && fixturesLeftByEntry.TryGetValue(r.Entry, out var left) ? (int?)left : null,
                 captainYetToPlay = captainYetToPlayByEntry != null && captainYetToPlayByEntry.TryGetValue(r.Entry, out var captainYetToPlay) && captainYetToPlay,
                 estimatedFreeTransfers = estimatedFreeTransfersByEntry != null && estimatedFreeTransfersByEntry.TryGetValue(r.Entry, out var freeTransfers) ? (int?)freeTransfers : null,
+                squadValue = squadValueByEntry != null && squadValueByEntry.TryGetValue(r.Entry, out var squadValue) ? (double?)squadValue : null,
+                bank = bankByEntry != null && bankByEntry.TryGetValue(r.Entry, out var bank) ? (double?)bank : null,
                 chips = chipStatusByEntry != null && chipStatusByEntry.TryGetValue(r.Entry, out var chipStatus) ? chipStatus : null,
                 cloneRatingPercent = cloneRatingByEntry != null && cloneRatingByEntry.TryGetValue(r.Entry, out var cloneRating) ? (double?)cloneRating : null,
                 templateRatingPercent = templateRatingByEntry != null && templateRatingByEntry.TryGetValue(r.Entry, out var templateRating) ? (double?)templateRating : null,
