@@ -267,4 +267,29 @@ public class ExpectedPointsEngineTests
 
         Assert.True(ExpectedPointsEngine.EffectiveRate(bonusMagnet, null) > ExpectedPointsEngine.EffectiveRate(noBonusHistory, null));
     }
+
+    [Fact]
+    public void EffectiveRate_DerivesCleanSheetProbabilityFromPoisson()
+    {
+        // xGC of 0.5/match -> P(0 goals conceded) = e^-0.5, worth 1pt to a clean-sheet MID (via the
+        // 35%-weighted underlying-stats blend, since form/points-per-game are both 0 here).
+        var mid = MakePlayer(elementType: 3, form: "0", minutes: 900, xgc: "5.0"); // 5.0 over 10 matches = 0.5/match
+        const double appearancePoints = 2.0;
+        const double underlyingStatsWeight = 0.35;
+        var expected = underlyingStatsWeight * (appearancePoints + (Math.Exp(-0.5) * 1.0));
+
+        Assert.Equal(expected, ExpectedPointsEngine.EffectiveRate(mid, null), precision: 6);
+    }
+
+    [Fact]
+    public void EffectiveRate_FadesTheFitnessDiscountAsWeeksAheadIncreases()
+    {
+        var doubtful = MakePlayer(form: "6.0");
+        doubtful.ChanceOfPlayingNextRound = 50;
+
+        Assert.Equal(3.0, ExpectedPointsEngine.EffectiveRate(doubtful, null, weeksAhead: 0));
+        Assert.Equal(4.5, ExpectedPointsEngine.EffectiveRate(doubtful, null, weeksAhead: 1));
+        Assert.Equal(6.0, ExpectedPointsEngine.EffectiveRate(doubtful, null, weeksAhead: 2));
+        Assert.Equal(6.0, ExpectedPointsEngine.EffectiveRate(doubtful, null, weeksAhead: 5));
+    }
 }

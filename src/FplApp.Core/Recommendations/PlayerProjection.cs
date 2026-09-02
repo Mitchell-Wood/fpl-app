@@ -25,6 +25,8 @@ internal static class PlayerProjection
         }
 
         var playerTeam = teamsById.GetValueOrDefault(player.Team);
-        return entries.Sum(e => ExpectedPointsEngine.EstimatePoints(player, playerTeam, e.Difficulty, teamsById.GetValueOrDefault(e.OpponentTeamId), e.IsHome));
+        var nextEvent = entries.Min(e => e.EventId);
+        return entries.Sum(e => ExpectedPointsEngine.EstimatePoints(
+            player, playerTeam, e.Difficulty, teamsById.GetValueOrDefault(e.OpponentTeamId), e.IsHome, weeksAhead: e.EventId - nextEvent));
     }
 }

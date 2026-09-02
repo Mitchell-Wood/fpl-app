@@ -6,8 +6,11 @@ namespace FplApp.Core.Recommendations;
 /// One upcoming fixture's FPL difficulty rating for a team, plus who it's against and where — kept
 /// alongside the difficulty (rather than averaged away) so callers can blend in the opponent's and
 /// team's actual current-season strength via <see cref="ExpectedPointsEngine.FixtureFactor"/>.
+/// <see cref="EventId"/> is the actual gameweek number, kept so callers projecting across a multi-week
+/// window can tell how many gameweeks out a fixture is (e.g. to fade a live fitness discount — see
+/// <see cref="ExpectedPointsEngine.EstimatePoints"/>).
 /// </summary>
-public readonly record struct FixtureDifficultyEntry(int Difficulty, int OpponentTeamId, bool IsHome);
+public readonly record struct FixtureDifficultyEntry(int Difficulty, int OpponentTeamId, bool IsHome, int EventId);
 
 public static class FixtureDifficultyCalculator
 {
@@ -50,20 +53,21 @@ public static class FixtureDifficultyCalculator
     {
         var difficultiesByTeam = new Dictionary<int, List<FixtureDifficultyEntry>>();
 
-        void AddDifficulty(int teamId, int difficulty, int opponentTeamId, bool isHome)
+        void AddDifficulty(int teamId, int difficulty, int opponentTeamId, bool isHome, int eventId)
         {
             if (!difficultiesByTeam.TryGetValue(teamId, out var list))
             {
                 list = [];
                 difficultiesByTeam[teamId] = list;
             }
-            list.Add(new FixtureDifficultyEntry(difficulty, opponentTeamId, isHome));
+            list.Add(new FixtureDifficultyEntry(difficulty, opponentTeamId, isHome, eventId));
         }
 
         foreach (var fixture in fixtures)
         {
-            AddDifficulty(fixture.TeamH, fixture.TeamHDifficulty, fixture.TeamA, isHome: true);
-            AddDifficulty(fixture.TeamA, fixture.TeamADifficulty, fixture.TeamH, isHome: false);
+            var eventId = fixture.Event ?? 0;
+            AddDifficulty(fixture.TeamH, fixture.TeamHDifficulty, fixture.TeamA, isHome: true, eventId);
+            AddDifficulty(fixture.TeamA, fixture.TeamADifficulty, fixture.TeamH, isHome: false, eventId);
         }
 
         return difficultiesByTeam;

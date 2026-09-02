@@ -41,8 +41,12 @@ public static class ExpectedPointsEngine
     private const int ForwardType = 4;
 
     /// <summary>Expected points for one specific fixture — the rate signal scaled by fixture difficulty.</summary>
-    public static double EstimatePoints(Player player, Team? playerTeam, int fplDifficulty, Team? opponentTeam, bool isHome)
-        => EffectiveRate(player, playerTeam) * FixtureFactor(fplDifficulty, playerTeam, opponentTeam, isHome, player.ElementType);
+    /// <param name="weeksAhead">
+    /// How many gameweeks out this fixture is from the next one (0 = the next gameweek). Only affects
+    /// how much a live fitness doubt discounts the estimate — see <see cref="PlayingChanceReliability"/>.
+    /// </param>
+    public static double EstimatePoints(Player player, Team? playerTeam, int fplDifficulty, Team? opponentTeam, bool isHome, int weeksAhead = 0)
+        => EffectiveRate(player, playerTeam, weeksAhead) * FixtureFactor(fplDifficulty, playerTeam, opponentTeam, isHome, player.ElementType);
 
     /// <summary>
     /// The blended per-fixture point rate: recent form (or FPL's own next-gameweek prediction, or
@@ -51,12 +55,12 @@ public static class ExpectedPointsEngine
     /// primary set-piece takers, and shrunk both for players who haven't nailed down regular minutes
     /// and for a live fitness doubt on the next fixture.
     /// </summary>
-    public static double EffectiveRate(Player player, Team? playerTeam)
+    public static double EffectiveRate(Player player, Team? playerTeam, int weeksAhead = 0)
     {
         var actualRate = ActualRate(player);
         var blended = BlendWithUnderlyingStats(player, actualRate);
         var withSetPieces = blended + PlayerSetPieceBonus(player);
-        return withSetPieces * MinutesReliability(player, playerTeam) * PlayingChanceReliability(player);
+        return withSetPieces * MinutesReliability(player, playerTeam) * PlayingChanceReliability(player, weeksAhead);
     }
 
     /// <summary>
@@ -153,9 +157,10 @@ public static class ExpectedPointsEngine
         var attackingPoints = xgiPerMatch * pointsPerGoalInvolvement;
 
         var xgcPerMatch = ParseDecimal(player.ExpectedGoalsConceded) / matchesPlayed;
-        // Rough logistic-style approximation: expected goals conceded of 0 implies a clean sheet is
-        // close to certain, 1.5+ implies it's close to never happening.
-        var cleanSheetProbability = Math.Clamp(1.0 - (xgcPerMatch / 1.5), 0, 1);
+        // Goals conceded in a match are well-approximated as Poisson-distributed around the team's
+        // expected-goals-conceded rate, so P(clean sheet) = P(0 goals) = e^-xgc — the same Poisson
+        // reasoning already used for defensive-contribution points, rather than an ad-hoc linear taper.
+        var cleanSheetProbability = Math.Exp(-xgcPerMatch);
 
         var defensivePoints = player.ElementType switch
         {
@@ -244,15 +249,30 @@ public static class ExpectedPointsEngine
         return MinReliabilityMultiplier + ((1 - MinReliabilityMultiplier) * minutesShare);
     }
 
+    // FPL's "chance of playing next round" is a live, short-term fitness call (a knock, a late test)
+    // that says nothing about a player's availability two or three weeks out — by then they've either
+    // recovered or a longer-term injury has replaced it with fresh news. Fading the discount to zero
+    // over this many gameweeks avoids carrying "75% for this week" as a permanent penalty into a
+    // lookahead window where it no longer applies.
+    private const double PlayingChanceDecayWeeks = 2.0;
+
     /// <summary>
-    /// FPL's own "chance of playing next round" percentage (a knock, late fitness test, etc.) —
-    /// applied as a straight probability discount. Strictly this only describes the immediate next
-    /// fixture, so applying it across a multi-week lookahead slightly over-penalizes later weeks in
-    /// the window, but doing so is still far more accurate than ignoring a live fitness doubt
-    /// entirely, which is what happened before.
+    /// FPL's own "chance of playing next round" percentage, applied as a straight probability discount
+    /// to the next fixture and faded out over <see cref="PlayingChanceDecayWeeks"/> gameweeks for
+    /// fixtures further out in the lookahead window, since the percentage only ever describes the
+    /// immediate next round.
     /// </summary>
-    private static double PlayingChanceReliability(Player player)
-        => player.ChanceOfPlayingNextRound is { } chance ? Math.Clamp(chance / 100.0, 0, 1) : 1.0;
+    private static double PlayingChanceReliability(Player player, int weeksAhead)
+    {
+        if (player.ChanceOfPlayingNextRound is not { } chance)
+        {
+            return 1.0;
+        }
+
+        var discount = 1.0 - Math.Clamp(chance / 100.0, 0, 1);
+        var decayWeight = Math.Clamp(1.0 - (weeksAhead / PlayingChanceDecayWeeks), 0, 1);
+        return 1.0 - (discount * decayWeight);
+    }
 
     private static double ParseDecimal(string value)
         => double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) ? parsed : 0;
