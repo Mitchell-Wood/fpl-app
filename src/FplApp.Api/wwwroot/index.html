@@ -425,6 +425,8 @@
   #ml-standings-table .chip-status { margin-left: 4px; }
   .num { text-align: right; }
   .muted { color: var(--text-muted); }
+  .price-change-up { color: var(--status-good); font-weight: 700; }
+  .price-change-down { color: var(--status-critical); font-weight: 700; }
   .pos-chip {
     display: inline-block;
     font-size: 0.72rem;
@@ -552,6 +554,11 @@
     padding: 16px;
     margin-bottom: 16px;
   }
+  .chip-advice-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+  }
   .lineup-card-header {
     display: flex;
     justify-content: space-between;
@@ -580,22 +587,6 @@
     font-size: 1rem;
     font-weight: 700;
   }
-  .lineup-position-group { margin-bottom: 8px; }
-  .lineup-position-label {
-    font-size: 0.7rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--text-muted);
-    margin-bottom: 2px;
-  }
-  .lineup-player-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    font-size: 0.875rem;
-  }
-  .lineup-player-list li { padding: 2px 0; }
   .lineup-subs, .lineup-unavailable {
     margin-top: 10px;
     font-size: 0.82rem;
@@ -631,18 +622,6 @@
     background: var(--status-good);
     color: #ffffff;
     margin-left: 5px;
-  }
-  .bps-list {
-    column-count: 2;
-    column-gap: 24px;
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    font-size: 0.875rem;
-  }
-  .bps-list li {
-    padding: 3px 0;
-    break-inside: avoid;
   }
   .pitch {
     background: repeating-linear-gradient(180deg, var(--pitch-2) 0, var(--pitch-2) 44px, var(--pitch-1) 44px, var(--pitch-1) 88px);
@@ -811,27 +790,29 @@
     grid-template-columns: 1fr 1fr;
     gap: 20px;
   }
-  .ml-stat-row {
+  /* Small labeled stat tiles — used anywhere a page needs to show a handful of at-a-glance numbers
+     (bank, squad value, free transfers, etc.) more prominently than plain text. */
+  .stat-row {
     display: flex;
     flex-wrap: wrap;
     gap: 10px;
     margin: 12px 0 18px;
   }
-  .ml-stat-tile {
+  .stat-tile {
     flex: 1 1 120px;
     background: var(--surface-1);
     border: 1px solid var(--gridline);
     border-radius: var(--radius-card);
     padding: 10px 14px;
   }
-  .ml-stat-label {
+  .stat-label {
     font-size: 0.68rem;
     text-transform: uppercase;
     letter-spacing: 0.045em;
     color: var(--text-muted);
     font-weight: 700;
   }
-  .ml-stat-value {
+  .stat-value {
     font-size: 1.15rem;
     font-weight: 800;
     margin-top: 2px;
@@ -1189,6 +1170,7 @@
     </div>
     <div id="my-team-status" class="status-msg" style="display:none"></div>
     <div id="my-team-summary" class="subtitle"></div>
+    <div id="my-team-stats" class="stat-row" style="display:none"></div>
     <div id="my-team-pitch-wrap" style="display:none;margin-bottom:24px;">
       <div id="my-team-formation" class="muted" style="font-size:0.82rem;font-weight:700;margin-bottom:8px;"></div>
       <div id="my-team-pitch"></div>
@@ -2484,14 +2466,17 @@
 
   // ---- Price watch ----
 
-  function priceWatchRow(p, changeValue) {
+  // changeClass colors the change/momentum column so a glance at the page shows which direction
+  // each table is about, without having to read the section heading — 'price-change-up' (green) for
+  // risers/rise-watch, 'price-change-down' (red) for fallers/fall-watch.
+  function priceWatchRow(p, changeValue, changeClass) {
     return `
       <tr>
         <td>${escapeHtml(p.webName)}</td>
         <td>${escapeHtml(p.teamName)}</td>
         <td><span class="pos-chip">${escapeHtml(positionName(p.elementType))}</span></td>
         <td class="num">£${(p.nowCost / 10).toFixed(1)}m</td>
-        <td class="num">${changeValue}</td>
+        <td class="num"><span class="${changeClass}">${changeValue}</span></td>
         <td class="num">${p.selectedByPercent.toFixed(1)}%</td>
       </tr>
     `;
@@ -2513,13 +2498,13 @@
       if (!res.ok) throw new Error('price-watch ' + res.status);
       const data = await res.json();
 
-      tables.risers.innerHTML = data.risersToday.map(p => priceWatchRow(p, `+£${(p.costChangeEventTenths / 10).toFixed(1)}m`)).join('')
+      tables.risers.innerHTML = data.risersToday.map(p => priceWatchRow(p, `+£${(p.costChangeEventTenths / 10).toFixed(1)}m`, 'price-change-up')).join('')
         || `<tr><td colspan="6" class="muted">No price rises today.</td></tr>`;
-      tables.fallers.innerHTML = data.fallersToday.map(p => priceWatchRow(p, `-£${(Math.abs(p.costChangeEventTenths) / 10).toFixed(1)}m`)).join('')
+      tables.fallers.innerHTML = data.fallersToday.map(p => priceWatchRow(p, `-£${(Math.abs(p.costChangeEventTenths) / 10).toFixed(1)}m`, 'price-change-down')).join('')
         || `<tr><td colspan="6" class="muted">No price falls today.</td></tr>`;
-      tables.trendingIn.innerHTML = data.trendingIn.map(p => priceWatchRow(p, `+${p.netTransfersEvent.toLocaleString()}`)).join('')
+      tables.trendingIn.innerHTML = data.trendingIn.map(p => priceWatchRow(p, `+${p.netTransfersEvent.toLocaleString()}`, 'price-change-up')).join('')
         || `<tr><td colspan="6" class="muted">No standout transfer activity.</td></tr>`;
-      tables.trendingOut.innerHTML = data.trendingOut.map(p => priceWatchRow(p, p.netTransfersEvent.toLocaleString())).join('')
+      tables.trendingOut.innerHTML = data.trendingOut.map(p => priceWatchRow(p, p.netTransfersEvent.toLocaleString(), 'price-change-down')).join('')
         || `<tr><td colspan="6" class="muted">No standout transfer activity.</td></tr>`;
     } catch (err) {
       for (const tbody of Object.values(tables)) {
@@ -2794,12 +2779,16 @@
       return;
     }
 
-    container.innerHTML = suggestions.map(s => `
-      <div style="padding:8px 0;border-bottom:1px solid var(--gridline);">
-        <strong>${escapeHtml(s.name)}</strong>
-        <div class="muted" style="font-size:0.85rem;margin-top:2px;">${s.note}</div>
+    container.innerHTML = `
+      <div class="chip-advice-grid">
+        ${suggestions.map(s => `
+          <div class="lineup-card" style="margin-bottom:0;">
+            <strong>${escapeHtml(s.name)}</strong>
+            <div class="muted" style="font-size:0.85rem;margin-top:4px;">${s.note}</div>
+          </div>
+        `).join('')}
       </div>
-    `).join('');
+    `;
     section.style.display = '';
   }
 
@@ -2858,7 +2847,7 @@
       section.style.display = 'none';
       return;
     }
-    container.innerHTML = suggestions.map((s, i) => {
+    const rows = suggestions.map((s, i) => {
       const fixturesText = s.fixtures.length
         ? s.fixtures.map(f => `vs ${escapeHtml(f.opponent)} (${f.venue}) ${diffChip(f.difficulty)}`).join(' &nbsp; ')
         : '<span class="muted">No fixture</span>';
@@ -2868,16 +2857,25 @@
       if (s.isCurrentViceCaptain) tags.push('<span class="bench-badge">Your VC</span>');
       const note = s.note ? `<span class="muted"> (${escapeHtml(s.note)})</span>` : '';
       return `
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--gridline);">
-          <div>
-            <strong>${i + 1}. ${escapeHtml(s.webName)}</strong> <span class="muted">(${escapeHtml(s.teamName)})</span>
+        <tr>
+          <td class="num">${i + 1}</td>
+          <td>
+            <strong>${escapeHtml(s.webName)}</strong> <span class="muted">(${escapeHtml(s.teamName)})</span>
             ${tags.join(' ')}${note}
-            <div class="muted" style="font-size:0.85rem;margin-top:2px;">${fixturesText}</div>
-          </div>
-          <div class="num" style="font-weight:600;white-space:nowrap;">${s.expectedPoints.toFixed(1)} xPts</div>
-        </div>
+          </td>
+          <td>${fixturesText}</td>
+          <td class="num" style="white-space:nowrap;">${s.expectedPoints.toFixed(1)}</td>
+        </tr>
       `;
     }).join('');
+    container.innerHTML = `
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th class="num">#</th><th>Player</th><th>Fixture(s)</th><th class="num">xPts</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    `;
     section.style.display = '';
   }
 
@@ -3015,38 +3013,41 @@
 
   // ---- Squad builder (Wildcard / Free Hit) ----
 
-  const SQUAD_BUILDER_POSITION_LABELS = { 1: 'Goalkeepers', 2: 'Defenders', 3: 'Midfielders', 4: 'Forwards' };
-
   function setSquadBuilderBudget(budgetMillions) {
     document.getElementById('squad-builder-budget').value = budgetMillions.toFixed(1);
   }
 
   function squadBuilderPlayerRow(p) {
     return `
-      <li style="display:flex;justify-content:space-between;">
-        <span>${p.isCaptain ? '<span class="captain-badge">C</span> ' : ''}${escapeHtml(p.webName)} <span class="muted">(${escapeHtml(p.teamName)})</span></span>
-        <span class="num">£${(p.nowCost / 10).toFixed(1)}m &middot; ${p.projectedPoints.toFixed(1)} pts</span>
-      </li>
+      <tr>
+        <td>${escapeHtml(p.webName)}</td>
+        <td>${escapeHtml(p.teamName)}</td>
+        <td><span class="pos-chip">${escapeHtml(positionName(p.elementType))}</span></td>
+        <td>
+          ${p.isCaptain ? '<span class="captain-badge">C</span>' : ''}
+          ${!p.isStarting ? '<span class="bench-badge">Bench</span>' : ''}
+        </td>
+        <td class="num">£${(p.nowCost / 10).toFixed(1)}m</td>
+        <td class="num">${p.projectedPoints.toFixed(1)}</td>
+      </tr>
     `;
   }
 
   function renderSquadBuilder(data) {
     const container = document.getElementById('squad-builder-content');
     const squad = data.squad;
-    const byPosition = new Map([1, 2, 3, 4].map(t => [t, squad.players.filter(p => p.elementType === t)]));
-
-    const groupHtml = elementType => {
-      const players = byPosition.get(elementType) ?? [];
-      const starters = players.filter(p => p.isStarting);
-      const bench = players.filter(p => !p.isStarting);
-      return `
-        <div class="lineup-position-group">
-          <div class="lineup-position-label">${SQUAD_BUILDER_POSITION_LABELS[elementType]}</div>
-          <ul class="lineup-player-list">${starters.map(squadBuilderPlayerRow).join('')}</ul>
-          ${bench.length ? `<div class="muted" style="font-size:0.76rem;margin:6px 0 2px;">Bench</div><ul class="lineup-player-list">${bench.map(squadBuilderPlayerRow).join('')}</ul>` : ''}
-        </div>
-      `;
-    };
+    // Starting XI first (in position order), then bench — mirrors the pitch/bench split above.
+    const sortedPlayers = [...squad.players].sort((a, b) => (a.isStarting === b.isStarting ? 0 : a.isStarting ? -1 : 1) || a.elementType - b.elementType);
+    const playersTableHtml = `
+      <div class="table-wrap" style="margin-top:16px;">
+        <table>
+          <thead>
+            <tr><th>Player</th><th>Team</th><th>Pos</th><th></th><th class="num">Cost</th><th class="num">Proj. Pts</th></tr>
+          </thead>
+          <tbody>${sortedPlayers.map(squadBuilderPlayerRow).join('')}</tbody>
+        </table>
+      </div>
+    `;
 
     const { startersByPos, bench } = groupPlayersForPitch(squad.players, p => !p.isStarting);
 
@@ -3067,7 +3068,7 @@
         </div>
         ${renderPitch(startersByPos)}
         ${renderBenchStrip(bench)}
-        ${[1, 2, 3, 4].map(groupHtml).join('')}
+        ${playersTableHtml}
       </div>
     `;
   }
@@ -3141,6 +3142,7 @@
     const eventId = getMyTeamCurrentEventId();
     const statusEl = document.getElementById('my-team-status');
     const summaryEl = document.getElementById('my-team-summary');
+    const statsEl = document.getElementById('my-team-stats');
     const tableWrap = document.getElementById('my-team-table-wrap');
     const captaincySection = document.getElementById('captaincy-section');
     const transferSuggestionsSection = document.getElementById('transfer-suggestions-section');
@@ -3149,6 +3151,8 @@
 
     statusEl.style.display = 'none';
     summaryEl.textContent = '';
+    statsEl.style.display = 'none';
+    statsEl.innerHTML = '';
     tableWrap.style.display = 'none';
     chipAdvisorSection.style.display = 'none';
     templateComparisonSection.style.display = 'none';
@@ -3193,8 +3197,13 @@
       statusEl.style.display = 'none';
       const targetEvent = state.bootstrap.events.find(e => e.id === data.targetEventId);
       summaryEl.textContent = `${data.teamName} (${data.managerName}) — recommended lineup for `
-        + `${targetEvent ? targetEvent.name : 'the next gameweek'} `
-        + `· Bank: £${data.bank.toFixed(1)}m · Squad value: £${data.value.toFixed(1)}m`;
+        + `${targetEvent ? targetEvent.name : 'the next gameweek'}`;
+      statsEl.innerHTML = `
+        <div class="stat-tile"><div class="stat-label">Squad Value</div><div class="stat-value">£${data.value.toFixed(1)}m</div></div>
+        <div class="stat-tile"><div class="stat-label">Bank</div><div class="stat-value">£${data.bank.toFixed(1)}m</div></div>
+        <div class="stat-tile"><div class="stat-label">Total Budget</div><div class="stat-value">£${(data.bank + data.value).toFixed(1)}m</div></div>
+      `;
+      statsEl.style.display = '';
       setSquadBuilderBudget(data.bank + data.value);
       renderMyTeamPitch(data.picks);
       renderMyTeamRows(data.picks);
@@ -3515,10 +3524,10 @@
         ${header}
         <p class="muted" style="margin-top:-8px;">${escapeHtml(currentEvent.name)} &middot; Formation ${formation}</p>
 
-        <div class="ml-stat-row">
-          <div class="ml-stat-tile"><div class="ml-stat-label">Free Transfers</div><div class="ml-stat-value">${gwData.estimatedFreeTransfers ?? '—'}</div></div>
-          <div class="ml-stat-tile"><div class="ml-stat-label">Squad Value</div><div class="ml-stat-value">£${gwData.squadValue.toFixed(1)}m</div></div>
-          <div class="ml-stat-tile"><div class="ml-stat-label">Bank</div><div class="ml-stat-value">£${gwData.bank.toFixed(1)}m</div></div>
+        <div class="stat-row">
+          <div class="stat-tile"><div class="stat-label">Free Transfers</div><div class="stat-value">${gwData.estimatedFreeTransfers ?? '—'}</div></div>
+          <div class="stat-tile"><div class="stat-label">Squad Value</div><div class="stat-value">£${gwData.squadValue.toFixed(1)}m</div></div>
+          <div class="stat-tile"><div class="stat-label">Bank</div><div class="stat-value">£${gwData.bank.toFixed(1)}m</div></div>
         </div>
 
         <div id="ml-detail-pitch"></div>
@@ -3530,9 +3539,9 @@
         <h4 class="ml-section-heading">Chips</h4>
         <div>${renderChipsCell(gwData.chips)}</div>
 
-        <div class="ml-stat-row" style="margin-top:14px;">
-          <div class="ml-stat-tile"><div class="ml-stat-label">Clone %</div><div class="ml-stat-value">${gwData.cloneRatingPercent != null ? gwData.cloneRatingPercent.toFixed(1) + '%' : '—'}</div></div>
-          <div class="ml-stat-tile"><div class="ml-stat-label">Template %</div><div class="ml-stat-value">${gwData.templateRatingPercent != null ? gwData.templateRatingPercent.toFixed(1) + '%' : '—'}</div></div>
+        <div class="stat-row" style="margin-top:14px;">
+          <div class="stat-tile"><div class="stat-label">Clone %</div><div class="stat-value">${gwData.cloneRatingPercent != null ? gwData.cloneRatingPercent.toFixed(1) + '%' : '—'}</div></div>
+          <div class="stat-tile"><div class="stat-label">Template %</div><div class="stat-value">${gwData.templateRatingPercent != null ? gwData.templateRatingPercent.toFixed(1) + '%' : '—'}</div></div>
         </div>
 
         ${renderSeasonHistory(historyData)}
@@ -3709,12 +3718,29 @@
     } else if (!bonus.length) {
       body = '<p class="muted" style="margin:0;">No BPS data available for this match.</p>';
     } else {
-      body = `<ul class="bps-list">${bonus.map(b => {
+      const rows = bonus.map((b, i) => {
         const player = elementsById.get(b.element);
         const name = player ? escapeHtml(player.web_name) : `Player #${b.element}`;
+        const team = player ? escapeHtml(teamName(player.team)) : '';
         const badge = b.bonus > 0 ? `<span class="bonus-badge">+${b.bonus}</span>` : '';
-        return `<li>${name} (${b.value})${badge}</li>`;
-      }).join('')}</ul>`;
+        return `
+          <tr>
+            <td class="num">${i + 1}</td>
+            <td>${name}</td>
+            <td class="muted">${team}</td>
+            <td class="num">${b.value}</td>
+            <td class="num">${badge}</td>
+          </tr>
+        `;
+      }).join('');
+      body = `
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th class="num">#</th><th>Player</th><th>Team</th><th class="num">BPS</th><th class="num">Bonus</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      `;
     }
 
     return `<div class="lineup-card">
