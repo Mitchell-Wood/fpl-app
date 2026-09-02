@@ -410,6 +410,19 @@
   }
   tbody tr:hover { background: var(--row-hover); }
   tbody tr:last-child td { border-bottom: none; }
+
+  /* Mini-league standings has more columns than any other table on the page — compact it enough
+     that it fits without a horizontal scrollbar on a typical desktop viewport. */
+  #ml-standings-table { font-size: 0.78rem; }
+  #ml-standings-table th, #ml-standings-table td { padding: 7px 6px; }
+  #ml-standings-table thead th { white-space: normal; line-height: 1.2; }
+  #ml-standings-table td.ml-truncate {
+    max-width: 88px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  #ml-standings-table .chip-status { margin-left: 4px; }
   .num { text-align: right; }
   .muted { color: var(--text-muted); }
   .pos-chip {
@@ -1230,14 +1243,14 @@
             <th class="num sortable" data-key="rank">Rank</th>
             <th class="sortable" data-key="entryName">Team</th>
             <th class="sortable" data-key="playerName">Manager</th>
-            <th class="num sortable" data-key="total">Total Points</th>
-            <th class="num sortable" data-key="eventTotal">GW Points</th>
-            <th class="num sortable ml-detail-col" data-key="fixturesLeft" title="Starting XI players whose fixture(s) haven't finished yet this gameweek — a double gameweek counts twice. (C) means their captain hasn't played yet.">Left to Play</th>
-            <th class="num sortable ml-detail-col" data-key="estimatedFreeTransfers" title="Estimated from public gameweek history — not an official FPL figure">Free Transfers</th>
-            <th class="num sortable ml-detail-col" data-key="squadValue" title="Total squad value, not including money in the bank">Squad Value</th>
+            <th class="num sortable" data-key="total" title="Total points">Total</th>
+            <th class="num sortable" data-key="eventTotal" title="Points this gameweek">GW</th>
+            <th class="num sortable ml-detail-col" data-key="fixturesLeft" title="Left to play: starting XI players whose fixture(s) haven't finished yet this gameweek — a double gameweek counts twice. (C) means their captain hasn't played yet.">Left</th>
+            <th class="num sortable ml-detail-col" data-key="estimatedFreeTransfers" title="Estimated free transfers available, from public gameweek history — not an official FPL figure">FT</th>
+            <th class="num sortable ml-detail-col" data-key="squadValue" title="Squad value, not including money in the bank">Value</th>
             <th class="num sortable ml-detail-col" data-key="bank" title="Unspent money in the bank">Bank</th>
-            <th class="num sortable ml-detail-col" data-key="pointsOnBench" title="Points scored by this gameweek's bench, that didn't count">Bench Pts</th>
-            <th class="num sortable ml-detail-col" data-key="transfersMade" title="Transfers made this gameweek, with any points cost from extra transfers ('hits') shown in brackets">Transfers</th>
+            <th class="num sortable ml-detail-col" data-key="pointsOnBench" title="Points scored by this gameweek's bench, that didn't count">Bench</th>
+            <th class="num sortable ml-detail-col" data-key="transfersMade" title="Transfers made this gameweek, with any points cost from extra transfers ('hits') shown in brackets">Trans.</th>
             <th class="num ml-detail-col" title="TC = Triple Captain, BB = Bench Boost, FH = Free Hit, WC = Wildcard. Green = playing this gameweek, red = already used this half of the season (resets at GW20).">Chips</th>
             <th class="num sortable ml-detail-col" data-key="cloneRatingPercent" title="How much of this manager's starting XI + captain is shared with other managers this gameweek, via livefpl.net. Higher = more template.">Clone %</th>
             <th class="num sortable ml-detail-col" data-key="templateRatingPercent" title="How heavy each line of your team is compared to top 10k teams">Template %</th>
@@ -3239,15 +3252,15 @@
     const rowsHtml = sortedRows.map(r => `
       <tr style="cursor:pointer" data-entry="${r.entry}" data-team-name="${escapeHtml(r.entryName)}" data-manager-name="${escapeHtml(r.playerName)}">
         <td class="num">${r.rank}</td>
-        <td>${escapeHtml(r.entryName)}</td>
-        <td>${escapeHtml(r.playerName)}</td>
+        <td class="ml-truncate" title="${escapeHtml(r.entryName)}">${escapeHtml(r.entryName)}</td>
+        <td class="ml-truncate" title="${escapeHtml(r.playerName)}">${escapeHtml(r.playerName)}</td>
         <td class="num">${r.total}</td>
         <td class="num">${r.eventTotal}</td>
         ${hasManagerDetail ? detailCellsHtml(r) : ''}
       </tr>
     `).join('');
 
-    const colCount = hasManagerDetail ? 10 : 5;
+    const colCount = hasManagerDetail ? 14 : 5;
     tbody.innerHTML = rowsHtml || `<tr><td colspan="${colCount}" class="muted">No standings yet for this league (usually empty until a gameweek has been scored).</td></tr>`;
     document.querySelectorAll('#ml-standings-table .ml-detail-col').forEach(th => {
       th.style.display = hasManagerDetail ? '' : 'none';
