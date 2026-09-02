@@ -20,9 +20,21 @@ public static class ExpectedPointsEngine
     // fall back to the plain form/ep_next/points-per-game rate instead of blending them in.
     private const double MinMinutesForUnderlyingBlend = 180;
 
-    // Extra goal threat for a nailed-on penalty/free-kick/corner taker that isn't fully reflected in
-    // their season-average involvement rate yet (e.g. they only inherited the duty recently).
-    private const double SetPieceBonus = 0.3;
+    // Extra points for a nailed-on set-piece duty that isn't fully reflected in a player's
+    // season-average involvement rate yet (e.g. they only inherited the duty recently). The three
+    // duties aren't worth the same and are kept as separate constants (added together for a player who
+    // holds more than one) rather than one flat bonus:
+    //  - Penalties convert at a high rate (~75-80%) and are effectively a free, high-probability shot
+    //    roughly every 5-7 matches per team, making the primary taker's duty the most valuable by far.
+    //  - Direct free kicks are a much rarer scoring opportunity — most direct free kicks in a match
+    //    aren't even in a shooting position — so a nailed-on taker earns a modest bump.
+    //  - Corners/indirect free kicks essentially never produce a goal for the taker themselves, but a
+    //    consistent delivery threat meaningfully raises their assist chances over a season.
+    // These are rough season-average estimates rather than derived from per-team penalty frequency or
+    // conversion-rate data, which isn't available here.
+    private const double PenaltyTakerBonus = 0.45;
+    private const double FreekickTakerBonus = 0.15;
+    private const double CornerTakerBonus = 0.1;
 
     // A player who's featured for only a fraction of their team's available minutes this season is
     // less certain to start future matches than their per-90 output alone implies, even if currently
@@ -46,7 +58,8 @@ public static class ExpectedPointsEngine
     /// how much a live fitness doubt discounts the estimate — see <see cref="PlayingChanceReliability"/>.
     /// </param>
     public static double EstimatePoints(Player player, Team? playerTeam, int fplDifficulty, Team? opponentTeam, bool isHome, int weeksAhead = 0)
-        => EffectiveRate(player, playerTeam, weeksAhead) * FixtureFactor(fplDifficulty, playerTeam, opponentTeam, isHome, player.ElementType);
+        => EffectiveRate(player, playerTeam, weeksAhead, MatchGoalEnvironmentFactor(fplDifficulty, playerTeam, opponentTeam, isHome))
+            * FixtureFactor(fplDifficulty, playerTeam, opponentTeam, isHome, player.ElementType);
 
     /// <summary>
     /// The blended per-fixture point rate: recent form (or FPL's own next-gameweek prediction, or
@@ -55,10 +68,16 @@ public static class ExpectedPointsEngine
     /// primary set-piece takers, and shrunk both for players who haven't nailed down regular minutes
     /// and for a live fitness doubt on the next fixture.
     /// </summary>
-    public static double EffectiveRate(Player player, Team? playerTeam, int weeksAhead = 0)
+    /// <param name="bonusMatchIntensity">
+    /// See <see cref="MatchGoalEnvironmentFactor"/> — scales only the bonus-points component, not the
+    /// whole rate, so it stacks with (rather than duplicates) the broader fixture-difficulty scaling
+    /// applied separately in <see cref="EstimatePoints"/>. Defaults to neutral for callers that score a
+    /// player outside the context of one specific fixture.
+    /// </param>
+    public static double EffectiveRate(Player player, Team? playerTeam, int weeksAhead = 0, double bonusMatchIntensity = 1.0)
     {
         var actualRate = ActualRate(player);
-        var blended = BlendWithUnderlyingStats(player, actualRate);
+        var blended = BlendWithUnderlyingStats(player, actualRate, bonusMatchIntensity);
         var withSetPieces = blended + PlayerSetPieceBonus(player);
         return withSetPieces * MinutesReliability(player, playerTeam) * PlayingChanceReliability(player, weeksAhead);
     }
@@ -106,6 +125,26 @@ public static class ExpectedPointsEngine
         return (fdrFactor + strengthFactor) / 2.0;
     }
 
+    /// <summary>
+    /// How goal-heavy a fixture is likely to be for either side — used to scale expected bonus points,
+    /// since BPS-worthy moments (goals, assists, big defensive actions) cluster in open, high-scoring
+    /// matches regardless of which team a player is on. Averages both teams' attacking prospects
+    /// (each side's attack vs the other's defence, via <see cref="FixtureFactor"/> as an attacker would
+    /// see it) rather than just the player's own side, since bonus points aren't limited to whichever
+    /// team is "in form" going in — a relegation-battler grinding out a 0-0 suppresses bonus for
+    /// everyone on the pitch just as much as it does clean-sheet points for the other side.
+    /// </summary>
+    private static double MatchGoalEnvironmentFactor(int fplDifficulty, Team? playerTeam, Team? opponentTeam, bool isHome)
+    {
+        // Reuses the player's own-side FDR for the reversed (opponent's-attack) calculation too, since
+        // the opponent's own FDR rating for this fixture isn't available here — an approximation, but
+        // FDR is only half of what FixtureFactor blends in, with the correctly-swapped team-strength
+        // ratio carrying the rest.
+        var ownAttack = FixtureFactor(fplDifficulty, playerTeam, opponentTeam, isHome, MidfielderType);
+        var oppAttack = FixtureFactor(fplDifficulty, opponentTeam, playerTeam, !isHome, MidfielderType);
+        return (ownAttack + oppAttack) / 2.0;
+    }
+
     private static double ActualRate(Player player)
     {
         var form = ParseDecimal(player.Form);
@@ -124,18 +163,18 @@ public static class ExpectedPointsEngine
     /// standard "xG regression" idea that underlying chance quality is a more stable predictor of
     /// future output than a small sample of actual (lucky-or-unlucky) results.
     /// </summary>
-    private static double BlendWithUnderlyingStats(Player player, double actualRate)
+    private static double BlendWithUnderlyingStats(Player player, double actualRate, double bonusMatchIntensity)
     {
         if (player.Minutes < MinMinutesForUnderlyingBlend)
         {
             return actualRate;
         }
 
-        var underlyingRate = UnderlyingRate(player);
+        var underlyingRate = UnderlyingRate(player, bonusMatchIntensity);
         return underlyingRate <= 0 ? actualRate : (actualRate * (1 - UnderlyingStatsWeight)) + (underlyingRate * UnderlyingStatsWeight);
     }
 
-    private static double UnderlyingRate(Player player)
+    private static double UnderlyingRate(Player player, double bonusMatchIntensity)
     {
         var matchesPlayed = player.Minutes / 90.0;
         if (matchesPlayed <= 0)
@@ -154,7 +193,19 @@ public static class ExpectedPointsEngine
             MidfielderType => ((5.0 * 2) + 3.0) / 3.0,
             _ => ((4.0 * 2) + 3.0) / 3.0,
         };
-        var attackingPoints = xgiPerMatch * pointsPerGoalInvolvement;
+
+        // FPL's Threat sub-index (built from shots, shot location, and box-entry frequency) is a
+        // second, independently-modeled signal of a player's underlying goal threat — distinct from
+        // xG's shot-by-shot model — so blending a modest amount of it in helps catch attacking
+        // involvement that isn't yet reflected in a still-small xG sample. Threat has no natural
+        // points scale of its own, so this uses a conservative, hand-picked conversion rather than one
+        // derived from real calibration data (which isn't available here) — small enough to nudge,
+        // not dominate, the xG-based estimate.
+        var threatPerMatch = ParseDecimal(player.Threat) / matchesPlayed;
+        const double threatToPointsScale = 0.008;
+        var threatPoints = threatPerMatch * threatToPointsScale;
+
+        var attackingPoints = (xgiPerMatch * pointsPerGoalInvolvement) + threatPoints;
 
         var xgcPerMatch = ParseDecimal(player.ExpectedGoalsConceded) / matchesPlayed;
         // Goals conceded in a match are well-approximated as Poisson-distributed around the team's
@@ -178,8 +229,10 @@ public static class ExpectedPointsEngine
         // The season's own bonus-points rate is used as a proxy for future bonus (BPS rewards goals,
         // assists, clean sheets, and defensive actions — the same inputs already driving the rest of
         // this estimate — so a player's historical bonus rate is a reasonable stand-in for a bonus
-        // system that isn't otherwise modeled here).
-        var bonusPoints = player.Bonus / matchesPlayed;
+        // system that isn't otherwise modeled here), scaled by how goal-heavy this specific fixture is
+        // expected to be (see MatchGoalEnvironmentFactor) rather than treated as a flat season average
+        // regardless of opponent.
+        var bonusPoints = (player.Bonus / matchesPlayed) * bonusMatchIntensity;
 
         // Card-prone players lose a small amount of expected value every match: -1pt per yellow,
         // -3pts per red, at their season rate.
@@ -234,8 +287,20 @@ public static class ExpectedPointsEngine
             return 0; // forwards are already expected to be a goal threat; GKs don't take set pieces
         }
 
-        var isPrimaryTaker = player.PenaltiesOrder == 1 || player.DirectFreekicksOrder == 1 || player.CornersAndIndirectFreekicksOrder == 1;
-        return isPrimaryTaker ? SetPieceBonus : 0;
+        double bonus = 0;
+        if (player.PenaltiesOrder == 1)
+        {
+            bonus += PenaltyTakerBonus;
+        }
+        if (player.DirectFreekicksOrder == 1)
+        {
+            bonus += FreekickTakerBonus;
+        }
+        if (player.CornersAndIndirectFreekicksOrder == 1)
+        {
+            bonus += CornerTakerBonus;
+        }
+        return bonus;
     }
 
     private static double MinutesReliability(Player player, Team? playerTeam)

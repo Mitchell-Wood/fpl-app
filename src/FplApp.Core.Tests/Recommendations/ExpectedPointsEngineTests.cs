@@ -13,6 +13,7 @@ public class ExpectedPointsEngineTests
         int minutes = 0,
         string xgi = "0",
         string xgc = "0",
+        string threat = "0",
         double defensiveContributionPer90 = 0,
         int? penaltiesOrder = null,
         int? freekicksOrder = null,
@@ -28,6 +29,7 @@ public class ExpectedPointsEngineTests
             Minutes = minutes,
             ExpectedGoalInvolvements = xgi,
             ExpectedGoalsConceded = xgc,
+            Threat = threat,
             PenaltiesOrder = penaltiesOrder,
             DirectFreekicksOrder = freekicksOrder,
             CornersAndIndirectFreekicksOrder = cornersOrder,
@@ -63,6 +65,18 @@ public class ExpectedPointsEngineTests
     }
 
     [Fact]
+    public void EffectiveRate_CreditsHigherThreat_AtEqualXgi()
+    {
+        var lowThreat = MakePlayer(form: "5.0", minutes: 900, xgi: "5.0", threat: "10.0");
+        var highThreat = MakePlayer(form: "5.0", minutes: 900, xgi: "5.0", threat: "200.0");
+
+        var lowRate = ExpectedPointsEngine.EffectiveRate(lowThreat, null);
+        var highRate = ExpectedPointsEngine.EffectiveRate(highThreat, null);
+
+        Assert.True(highRate > lowRate, "higher underlying threat should nudge the rate up even at identical xGI");
+    }
+
+    [Fact]
     public void EffectiveRate_AppliesSetPieceBonus_ToDefendersAndMidfieldersOnDuty()
     {
         var withoutDuty = MakePlayer(elementType: 2, form: "3.0");
@@ -76,6 +90,32 @@ public class ExpectedPointsEngineTests
         Assert.True(ExpectedPointsEngine.EffectiveRate(freekickTaker, null) > baseline);
         Assert.True(ExpectedPointsEngine.EffectiveRate(cornerTaker, null) > baseline);
         Assert.Equal(baseline, ExpectedPointsEngine.EffectiveRate(backupTaker, null));
+    }
+
+    [Fact]
+    public void EffectiveRate_ValuesAPenaltyTaker_AboveAFreekickTaker_AboveACornerTaker()
+    {
+        var penaltyTaker = MakePlayer(elementType: 2, form: "3.0", penaltiesOrder: 1);
+        var freekickTaker = MakePlayer(elementType: 2, form: "3.0", freekicksOrder: 1);
+        var cornerTaker = MakePlayer(elementType: 2, form: "3.0", cornersOrder: 1);
+
+        var penaltyRate = ExpectedPointsEngine.EffectiveRate(penaltyTaker, null);
+        var freekickRate = ExpectedPointsEngine.EffectiveRate(freekickTaker, null);
+        var cornerRate = ExpectedPointsEngine.EffectiveRate(cornerTaker, null);
+
+        Assert.True(penaltyRate > freekickRate, "a nailed-on penalty taker should be worth more than a free-kick-only taker");
+        Assert.True(freekickRate > cornerRate, "a free-kick taker should be worth more than a corner-only taker");
+    }
+
+    [Fact]
+    public void EffectiveRate_StacksSetPieceDuties_ForAPlayerWhoHoldsMoreThanOne()
+    {
+        var penaltyOnly = MakePlayer(elementType: 2, form: "3.0", penaltiesOrder: 1);
+        var penaltyAndFreekicks = MakePlayer(elementType: 2, form: "3.0", penaltiesOrder: 1, freekicksOrder: 1);
+
+        Assert.True(
+            ExpectedPointsEngine.EffectiveRate(penaltyAndFreekicks, null) > ExpectedPointsEngine.EffectiveRate(penaltyOnly, null),
+            "holding an additional set-piece duty should add further value, not be capped at one flat bonus");
     }
 
     [Fact]
@@ -279,6 +319,50 @@ public class ExpectedPointsEngineTests
         var expected = underlyingStatsWeight * (appearancePoints + (Math.Exp(-0.5) * 1.0));
 
         Assert.Equal(expected, ExpectedPointsEngine.EffectiveRate(mid, null), precision: 6);
+    }
+
+    [Fact]
+    public void EstimatePoints_GivesAHigherEstimate_ForABonusMagnetInAnOpenHighScoringFixture()
+    {
+        var bonusMagnet = MakePlayer(elementType: 3, form: "0", minutes: 900);
+        bonusMagnet.Bonus = 20;
+
+        // Two attack-heavy, defence-light teams facing off (an open, likely high-scoring match) vs.
+        // two defence-heavy, attack-light teams (a likely stalemate) — same FDR either way.
+        var openPlayerTeam = new Team { Id = 1, Played = 10, StrengthAttackHome = 1400, StrengthDefenceHome = 1000 };
+        var openOpponentTeam = new Team { Id = 2, StrengthAttackAway = 1400, StrengthDefenceAway = 1000 };
+        var open = ExpectedPointsEngine.EstimatePoints(bonusMagnet, openPlayerTeam, fplDifficulty: 3, openOpponentTeam, isHome: true);
+
+        var closedPlayerTeam = new Team { Id = 1, Played = 10, StrengthAttackHome = 1000, StrengthDefenceHome = 1400 };
+        var closedOpponentTeam = new Team { Id = 2, StrengthAttackAway = 1000, StrengthDefenceAway = 1400 };
+        var closed = ExpectedPointsEngine.EstimatePoints(bonusMagnet, closedPlayerTeam, fplDifficulty: 3, closedOpponentTeam, isHome: true);
+
+        Assert.True(open > closed, "a bonus-reliant player should be rated higher in a fixture both teams are expected to attack in");
+    }
+
+    [Fact]
+    public void EffectiveRate_ScalesBonusPointsByMatchIntensity()
+    {
+        var bonusMagnet = MakePlayer(elementType: 3, form: "0", minutes: 900);
+        bonusMagnet.Bonus = 20; // 2.0/match over 10 matches
+
+        var lowIntensity = ExpectedPointsEngine.EffectiveRate(bonusMagnet, null, weeksAhead: 0, bonusMatchIntensity: 0.5);
+        var highIntensity = ExpectedPointsEngine.EffectiveRate(bonusMagnet, null, weeksAhead: 0, bonusMatchIntensity: 1.5);
+
+        // Only the bonus term (2.0pts/match) is scaled, at the 35% underlying-stats blend weight:
+        // (1.5 - 0.5) * 2.0 * 0.35 = 0.7.
+        Assert.Equal(0.7, highIntensity - lowIntensity, precision: 6);
+    }
+
+    [Fact]
+    public void EffectiveRate_MatchIntensityHasNoEffect_ForAPlayerWithNoBonusHistory()
+    {
+        var noBonusHistory = MakePlayer(elementType: 3, form: "0", minutes: 900);
+
+        var lowIntensity = ExpectedPointsEngine.EffectiveRate(noBonusHistory, null, weeksAhead: 0, bonusMatchIntensity: 0.5);
+        var highIntensity = ExpectedPointsEngine.EffectiveRate(noBonusHistory, null, weeksAhead: 0, bonusMatchIntensity: 1.5);
+
+        Assert.Equal(lowIntensity, highIntensity, precision: 6);
     }
 
     [Fact]
