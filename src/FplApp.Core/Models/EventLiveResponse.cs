@@ -22,4 +22,7 @@ public class EventLiveElementStats
 {
     [JsonPropertyName("minutes")]
     public int Minutes { get; set; }
+
+    [JsonPropertyName("total_points")]
+    public int TotalPoints { get; set; }
 }

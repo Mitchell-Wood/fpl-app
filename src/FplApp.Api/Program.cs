@@ -484,6 +484,86 @@ app.MapGet("/api/manager-history", async (int teamId, IFplDataService fplDataSer
     })
     .WithName("GetManagerHistory");
 
+app.MapGet("/api/manager-gameweek", async (int teamId, int eventId, IFplDataService fplDataService, ILiveFplService liveFplService, CancellationToken cancellationToken) =>
+    {
+        var entry = await fplDataService.GetEntryAsync(teamId, cancellationToken);
+        if (entry is null)
+        {
+            return Results.NotFound(new { message = "No FPL team found with that ID." });
+        }
+
+        var picks = await fplDataService.GetPicksAsync(teamId, eventId, cancellationToken);
+        if (picks is null)
+        {
+            // Normal before the gameweek's own deadline has passed — FPL doesn't publish another
+            // manager's picks that early.
+            return Results.Ok(new { teamId, eventId, available = false });
+        }
+
+        var bootstrapTask = fplDataService.GetBootstrapStaticAsync(cancellationToken);
+        var fixturesTask = fplDataService.GetFixturesAsync(cancellationToken);
+        var historyTask = fplDataService.GetHistoryAsync(teamId, cancellationToken);
+        var liveFplStatsTask = liveFplService.GetStatsAsync(teamId, cancellationToken);
+        var eventLiveTask = fplDataService.GetEventLiveAsync(eventId, cancellationToken);
+        await Task.WhenAll(bootstrapTask, fixturesTask, historyTask, liveFplStatsTask, eventLiveTask);
+        var bootstrap = bootstrapTask.Result;
+        var fixtures = fixturesTask.Result;
+        var history = historyTask.Result;
+        var liveFplStats = liveFplStatsTask.Result;
+        var pointsByPlayerId = eventLiveTask.Result.Elements.ToDictionary(e => e.Id, e => e.Stats.TotalPoints);
+
+        var playersById = bootstrap.Elements.ToDictionary(p => p.Id);
+        var teamsById = bootstrap.Teams.ToDictionary(t => t.Id);
+        var eventFixtures = fixtures.Where(f => f.Event == eventId).ToList();
+
+        bool HasFixtureRemaining(int playerTeamId)
+            => eventFixtures.Any(f => !f.FinishedProvisional && (f.TeamH == playerTeamId || f.TeamA == playerTeamId));
+
+        var managerName = $"{entry.PlayerFirstName} {entry.PlayerLastName}".Trim();
+
+        var squad = picks.Picks.OrderBy(p => p.Position).Select(pick =>
+        {
+            playersById.TryGetValue(pick.Element, out var player);
+            var rawPoints = pointsByPlayerId.GetValueOrDefault(pick.Element, 0);
+            return new
+            {
+                playerId = pick.Element,
+                webName = player?.WebName ?? $"Player #{pick.Element}",
+                teamName = player is not null ? teamsById.GetValueOrDefault(player.Team)?.ShortName ?? "?" : "?",
+                elementType = player?.ElementType ?? 0,
+                isCaptain = pick.IsCaptain,
+                isViceCaptain = pick.IsViceCaptain,
+                isBenched = pick.Position > 11,
+                hasFixtureRemaining = player is not null && HasFixtureRemaining(player.Team),
+                // The multiplier already reflects captaincy (x2, or x3 with Triple Captain) and Bench
+                // Boost (bench players score at x1 instead of the usual x0) — multiplying it through
+                // gives "what this player actually contributed to the team total", not just their raw
+                // individual score.
+                points = rawPoints * pick.Multiplier,
+            };
+        }).ToList();
+
+        return Results.Ok(new
+        {
+            teamId,
+            eventId,
+            available = true,
+            teamName = entry.Name,
+            managerName,
+            squadValue = picks.EntryHistory.Value / 10.0,
+            bank = picks.EntryHistory.Bank / 10.0,
+            estimatedFreeTransfers = history is not null ? (int?)FreeTransferEstimator.EstimateAvailable(history.Current, history.Chips) : null,
+            transfersMade = picks.EntryHistory.EventTransfers,
+            transferCost = picks.EntryHistory.EventTransfersCost,
+            chips = BuildChipStatus(picks.ActiveChip, history?.Chips, eventId),
+            benchBoostActive = picks.ActiveChip == "bboost",
+            cloneRatingPercent = liveFplStats.CloneRatingPercent,
+            templateRatingPercent = liveFplStats.TemplateRatingPercent,
+            squad,
+        });
+    })
+    .WithName("GetManagerGameweek");
+
 app.MapGet("/api/manager-transfers", async (int teamId, IFplDataService fplDataService, CancellationToken cancellationToken) =>
     {
         var transfers = await fplDataService.GetTransfersAsync(teamId, cancellationToken);

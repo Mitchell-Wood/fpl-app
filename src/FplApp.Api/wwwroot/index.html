@@ -648,12 +648,12 @@
     background: repeating-linear-gradient(180deg, var(--pitch-2) 0, var(--pitch-2) 44px, var(--pitch-1) 44px, var(--pitch-1) 88px);
     border-radius: var(--radius-card);
     box-shadow: var(--shadow-md), inset 0 0 0 2px var(--pitch-line);
-    padding: 20px 10px 14px;
+    padding: 24px 10px 18px;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    gap: 12px;
-    min-height: 380px;
+    gap: 20px;
+    min-height: 560px;
     position: relative;
     overflow: hidden;
   }
@@ -684,7 +684,7 @@
     display: flex;
     justify-content: space-evenly;
     align-items: flex-start;
-    gap: 6px;
+    gap: 8px;
     flex-wrap: wrap;
     position: relative;
     z-index: 1;
@@ -693,24 +693,24 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    width: 70px;
+    width: 124px;
     text-align: center;
   }
   .pitch-shirt {
     position: relative;
     line-height: 0;
-    filter: drop-shadow(0 2px 3px rgba(0,0,0,0.4));
+    filter: drop-shadow(0 3px 5px rgba(0,0,0,0.45));
   }
   .pitch-captain-badge {
     position: absolute;
-    top: -3px;
-    right: -1px;
-    width: 15px;
-    height: 15px;
+    top: -5px;
+    right: -5px;
+    width: 27px;
+    height: 27px;
     border-radius: 50%;
     background: var(--accent-cta-bg);
     color: var(--accent-cta-text);
-    font-size: 0.62rem;
+    font-size: 0.92rem;
     font-weight: 800;
     display: flex;
     align-items: center;
@@ -721,15 +721,34 @@
     background: rgba(255,255,255,0.9);
     color: #170019;
   }
-  .pitch-name {
+  /* Gameweek-in-progress state on a pitch player: dims a player whose fixture(s) have finished,
+     and rings a player who still has one left to play so live squads are scannable at a glance. */
+  .pitch-player-played { opacity: 0.42; }
+  .pitch-player-toplay .pitch-shirt {
+    padding: 5px;
+    margin: -5px;
+    border-radius: 50%;
+    box-shadow: 0 0 0 3px var(--status-good);
+  }
+  .pitch-points {
     margin-top: 4px;
-    font-size: 0.68rem;
+    font-size: 0.92rem;
+    font-weight: 800;
+    color: #d8ffe9;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.75);
+  }
+  .pitch-name {
+    margin-top: 7px;
+    font-size: 0.98rem;
     font-weight: 700;
     color: #ffffff;
-    text-shadow: 0 1px 2px rgba(0,0,0,0.75);
-    line-height: 1.2;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.85);
+    line-height: 1.25;
     max-width: 100%;
     overflow-wrap: break-word;
+    background: rgba(0,0,0,0.32);
+    padding: 2px 8px;
+    border-radius: 999px;
   }
   .bench-strip {
     display: flex;
@@ -744,6 +763,23 @@
   .bench-strip .pitch-name {
     color: var(--text-secondary);
     text-shadow: none;
+  }
+  /* Bench Boost active: the bench counts this gameweek, so it's styled like it belongs to the team
+     rather than reading as the usual doesn't-count strip. */
+  .bench-strip-active {
+    border: 1px solid var(--status-good);
+    box-shadow: 0 0 0 1px var(--status-good) inset;
+    background: var(--surface-2, var(--surface-1));
+  }
+  .bench-strip-active .pitch-name {
+    color: #ffffff;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+  }
+  .bench-strip-boost {
+    text-transform: none;
+    letter-spacing: normal;
+    font-weight: 700;
+    color: var(--status-good);
   }
   .bench-strip-label {
     width: 100%;
@@ -775,6 +811,56 @@
     grid-template-columns: 1fr 1fr;
     gap: 20px;
   }
+  .ml-stat-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 12px 0 18px;
+  }
+  .ml-stat-tile {
+    flex: 1 1 120px;
+    background: var(--surface-1);
+    border: 1px solid var(--gridline);
+    border-radius: var(--radius-card);
+    padding: 10px 14px;
+  }
+  .ml-stat-label {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.045em;
+    color: var(--text-muted);
+    font-weight: 700;
+  }
+  .ml-stat-value {
+    font-size: 1.15rem;
+    font-weight: 800;
+    margin-top: 2px;
+    font-variant-numeric: tabular-nums;
+  }
+  .ml-section-heading {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.045em;
+    color: var(--text-muted);
+    font-weight: 700;
+    margin: 22px 0 8px;
+  }
+  .ml-transfer-hit { color: var(--status-critical); font-weight: 700; text-transform: none; letter-spacing: normal; }
+  .ml-transfer-list {
+    background: var(--surface-1);
+    border: 1px solid var(--gridline);
+    border-radius: var(--radius-card);
+    padding: 8px 12px;
+  }
+  .ml-season-history summary {
+    list-style: none;
+  }
+  .ml-season-history summary::-webkit-details-marker { display: none; }
+  .ml-season-history summary::before {
+    content: '▸ ';
+    color: var(--series-1);
+  }
+  .ml-season-history[open] summary::before { content: '▾ '; }
   @media (max-width: 640px) {
     .pitch-pair { grid-template-columns: 1fr; }
   }
@@ -1804,7 +1890,7 @@
          <circle cx="2.5" cy="10.5" r="1.6" fill="${kit.secondary}"/>
          <circle cx="29.5" cy="10.5" r="1.6" fill="${kit.secondary}"/>`
       : '';
-    return `<svg viewBox="0 0 32 32" width="34" height="34" aria-hidden="true">
+    return `<svg viewBox="0 0 32 32" width="64" height="64" aria-hidden="true">
       ${defs}
       <path d="${bodyPath}" fill="${fill}" stroke="rgba(0,0,0,0.4)" stroke-width="1" stroke-linejoin="round"/>
       ${trim}
@@ -1824,16 +1910,24 @@
     return `<div class="pitch-fixtures">${chips}</div>`;
   }
 
-  // player: { name, team (short name or full name), isCaptain, isViceCaptain, isGoalkeeper?, nextFixtures? }
+  // player: { name, team (short name or full name), isCaptain, isViceCaptain, isGoalkeeper?,
+  //   nextFixtures?, played?, points? } — played is a three-way signal (true/false/undefined): true
+  //   dims the player (their fixture(s) are finished), false rings them (still to play this
+  //   gameweek), undefined leaves them alone (the caller isn't tracking a live gameweek at all).
+  //   points, when supplied, is what the player actually contributed to the team total (i.e.
+  //   already multiplied for captaincy/Bench Boost).
   function pitchPlayerHtml(player) {
     const badge = player.isCaptain
       ? '<span class="pitch-captain-badge">C</span>'
       : (player.isViceCaptain ? '<span class="pitch-captain-badge pitch-vc-badge">V</span>' : '');
     const kit = player.isGoalkeeper ? GOALKEEPER_KIT : kitFor(player.team);
+    const liveClass = player.played === true ? ' pitch-player-played' : (player.played === false ? ' pitch-player-toplay' : '');
+    const pointsHtml = player.points != null ? `<div class="pitch-points">${player.points} pt${player.points === 1 ? '' : 's'}</div>` : '';
     return `
-      <div class="pitch-player">
+      <div class="pitch-player${liveClass}">
         <div class="pitch-shirt">${shirtSvg(kit)}${badge}</div>
         <div class="pitch-name">${escapeHtml(player.name)}</div>
+        ${pointsHtml}
         ${pitchFixturesHtml(player.nextFixtures)}
       </div>
     `;
@@ -1856,11 +1950,13 @@
     `;
   }
 
-  function renderBenchStrip(players) {
+  // highlighted: true when Bench Boost is active this gameweek, so the bench visibly reads as "also
+  // scoring" rather than looking like the usual doesn't-count bench.
+  function renderBenchStrip(players, highlighted) {
     if (!players.length) return '';
     return `
-      <div class="bench-strip">
-        <div class="bench-strip-label">Bench</div>
+      <div class="bench-strip${highlighted ? ' bench-strip-active' : ''}">
+        <div class="bench-strip-label">Bench${highlighted ? ' <span class="bench-strip-boost">&bull; Bench Boost active</span>' : ''}</div>
         ${players.map(pitchPlayerHtml).join('')}
       </div>
     `;
@@ -1885,6 +1981,8 @@
         isViceCaptain: !!p.isViceCaptain,
         isGoalkeeper: p.elementType === 1,
         nextFixtures: p.nextFixtures,
+        played: typeof p.hasFixtureRemaining === 'boolean' ? !p.hasFixtureRemaining : undefined,
+        points: p.points,
       };
       if (isBenchedFn(p)) bench.push(pitchPlayer);
       else startersByPos[pos].push(pitchPlayer);
@@ -3295,55 +3393,41 @@
     }).join('');
   }
 
-  async function loadManagerHistory(teamId, teamName, managerName) {
-    const panel = document.getElementById('ml-detail-panel');
-    const content = document.getElementById('ml-detail-content');
-    panel.style.display = '';
-    content.innerHTML = `<p class="muted">Loading ${escapeHtml(teamName)}&hellip;</p>`;
+  // The collapsed-by-default season-long gameweek-by-gameweek breakdown — kept below the live
+  // gameweek view (pitch, stats, this-gameweek transfers, chips) rather than removed, since it's
+  // still the only place to see a past gameweek's transfer detail or the full chip-used history.
+  function renderSeasonHistory(historyData) {
+    if (!historyData) {
+      return '<p class="muted">Could not load season history.</p>';
+    }
 
-    try {
-      const [historyRes, transfersRes] = await Promise.all([
-        fetch(`/api/manager-history?teamId=${teamId}`),
-        fetch(`/api/manager-transfers?teamId=${teamId}`),
-      ]);
-      if (!historyRes.ok) throw new Error('manager-history ' + historyRes.status);
-      const data = await historyRes.json();
+    const chipsText = historyData.chips.length
+      ? historyData.chips.map(c => `${escapeHtml(CHIP_DISPLAY_NAMES[c.name] || c.name)} (GW${c.event})`).join(', ')
+      : '<span class="muted">None played yet</span>';
 
-      const transfersByEvent = new Map();
-      if (transfersRes.ok) {
-        const transfers = await transfersRes.json();
-        for (const t of transfers) {
-          if (!transfersByEvent.has(t.event)) transfersByEvent.set(t.event, []);
-          transfersByEvent.get(t.event).push(t);
-        }
-      }
+    const gwRows = [...historyData.gameweeks].reverse().map(gw => {
+      const hasTransfers = gw.eventTransfers > 0;
+      return `
+        <tr${hasTransfers ? ` class="ml-gw-row" data-event="${gw.event}" style="cursor:pointer"` : ''}>
+          <td>GW${gw.event}${hasTransfers ? ' <span class="muted" style="font-size:0.7rem;">(click for detail)</span>' : ''}</td>
+          <td class="num">${gw.points}</td>
+          <td class="num">${gw.eventTransfers}</td>
+          <td class="num">${gw.eventTransfersCost > 0 ? '−' + gw.eventTransfersCost : '—'}</td>
+          <td class="num">${gw.pointsOnBench}</td>
+        </tr>
+        ${hasTransfers ? `<tr class="ml-gw-detail" data-event-detail="${gw.event}" style="display:none"><td colspan="5"></td></tr>` : ''}
+      `;
+    }).join('');
 
-      const chipsText = data.chips.length
-        ? data.chips.map(c => `${escapeHtml(CHIP_DISPLAY_NAMES[c.name] || c.name)} (GW${c.event})`).join(', ')
-        : '<span class="muted">None played yet</span>';
-
-      const gwRows = [...data.gameweeks].reverse().map(gw => {
-        const hasTransfers = gw.eventTransfers > 0;
-        return `
-          <tr${hasTransfers ? ` class="ml-gw-row" data-event="${gw.event}" style="cursor:pointer"` : ''}>
-            <td>GW${gw.event}${hasTransfers ? ' <span class="muted" style="font-size:0.7rem;">(click for detail)</span>' : ''}</td>
-            <td class="num">${gw.points}</td>
-            <td class="num">${gw.eventTransfers}</td>
-            <td class="num">${gw.eventTransfersCost > 0 ? '−' + gw.eventTransfersCost : '—'}</td>
-            <td class="num">${gw.pointsOnBench}</td>
-          </tr>
-          ${hasTransfers ? `<tr class="ml-gw-detail" data-event-detail="${gw.event}" style="display:none"><td colspan="5"></td></tr>` : ''}
-        `;
-      }).join('');
-
-      content.innerHTML = `
-        <h3 class="section-heading" style="font-size:0.95rem;margin-top:0;">${escapeHtml(teamName)} <span class="muted">(${escapeHtml(managerName)})</span></h3>
-        <p>
-          <strong>Estimated free transfers:</strong> ${data.estimatedFreeTransfers}
+    return `
+      <details class="ml-season-history" style="margin-top:22px;">
+        <summary class="ml-section-heading" style="cursor:pointer;display:list-item;margin:0;">Season history</summary>
+        <p style="margin-top:10px;">
+          <strong>Estimated free transfers:</strong> ${historyData.estimatedFreeTransfers}
           <span class="muted" style="font-size:0.8rem;">(estimated from public history — not an official FPL figure)</span>
         </p>
         <p><strong>Chips used:</strong> ${chipsText}</p>
-        ${data.gameweeks.length ? `
+        ${historyData.gameweeks.length ? `
           <div class="table-wrap">
             <table>
               <thead>
@@ -3353,26 +3437,113 @@
             </table>
           </div>
         ` : '<p class="muted">No completed gameweeks yet this season.</p>'}
+      </details>
+    `;
+  }
+
+  function wireSeasonHistoryToggles(content, transfers) {
+    const transfersByEvent = new Map();
+    for (const t of transfers) {
+      if (!transfersByEvent.has(t.event)) transfersByEvent.set(t.event, []);
+      transfersByEvent.get(t.event).push(t);
+    }
+    content.querySelectorAll('tr.ml-gw-row').forEach(tr => {
+      tr.addEventListener('click', () => {
+        const detailRow = content.querySelector(`tr[data-event-detail="${tr.dataset.event}"]`);
+        if (!detailRow) return;
+        if (detailRow.style.display !== 'none') {
+          detailRow.style.display = 'none';
+          return;
+        }
+        const td = detailRow.querySelector('td');
+        if (!td.dataset.rendered) {
+          td.innerHTML = transferDetailHtml(transfersByEvent.get(parseInt(tr.dataset.event, 10)));
+          td.dataset.rendered = '1';
+        }
+        detailRow.style.display = '';
+      });
+    });
+  }
+
+  async function loadManagerHistory(teamId, teamName, managerName) {
+    const panel = document.getElementById('ml-detail-panel');
+    const content = document.getElementById('ml-detail-content');
+    panel.style.display = '';
+    content.innerHTML = `<p class="muted">Loading ${escapeHtml(teamName)}&hellip;</p>`;
+
+    const currentEvent = state.bootstrap.events.find(e => e.is_current);
+    if (!currentEvent) {
+      content.innerHTML = `<p class="muted">No gameweek is currently underway.</p>`;
+      return;
+    }
+
+    try {
+      const [gwRes, historyRes, transfersRes] = await Promise.all([
+        fetch(`/api/manager-gameweek?teamId=${teamId}&eventId=${currentEvent.id}`),
+        fetch(`/api/manager-history?teamId=${teamId}`),
+        fetch(`/api/manager-transfers?teamId=${teamId}`),
+      ]);
+      if (!gwRes.ok) throw new Error('manager-gameweek ' + gwRes.status);
+      const gwData = await gwRes.json();
+      const historyData = historyRes.ok ? await historyRes.json() : null;
+      const transfers = transfersRes.ok ? await transfersRes.json() : [];
+
+      const header = `<h3 class="section-heading" style="font-size:0.95rem;margin-top:0;">${escapeHtml(teamName)} <span class="muted">(${escapeHtml(managerName)})</span></h3>`;
+
+      if (!gwData.available) {
+        content.innerHTML = `
+          ${header}
+          <p class="muted">Picks for ${escapeHtml(currentEvent.name)} aren't public yet — FPL only publishes a team's picks once that gameweek's deadline has passed.</p>
+          ${renderSeasonHistory(historyData)}
+        `;
+        wireSeasonHistoryToggles(content, transfers);
+        return;
+      }
+
+      const { startersByPos, bench } = groupPlayersForPitch(gwData.squad, p => p.isBenched);
+      const formation = `${startersByPos.DEF.length}-${startersByPos.MID.length}-${startersByPos.FWD.length}`;
+
+      const transfersThisGw = transfers.filter(t => t.event === currentEvent.id);
+      const hitHtml = gwData.transferCost > 0
+        ? ` <span class="ml-transfer-hit">(&minus;${gwData.transferCost} pts)</span>`
+        : '';
+      const transfersHtml = transfersThisGw.length
+        ? transferDetailHtml(transfersThisGw)
+        : '<span class="muted">No transfers made this gameweek.</span>';
+
+      content.innerHTML = `
+        ${header}
+        <p class="muted" style="margin-top:-8px;">${escapeHtml(currentEvent.name)} &middot; Formation ${formation}</p>
+
+        <div class="ml-stat-row">
+          <div class="ml-stat-tile"><div class="ml-stat-label">Free Transfers</div><div class="ml-stat-value">${gwData.estimatedFreeTransfers ?? '—'}</div></div>
+          <div class="ml-stat-tile"><div class="ml-stat-label">Squad Value</div><div class="ml-stat-value">£${gwData.squadValue.toFixed(1)}m</div></div>
+          <div class="ml-stat-tile"><div class="ml-stat-label">Bank</div><div class="ml-stat-value">£${gwData.bank.toFixed(1)}m</div></div>
+        </div>
+
+        <div id="ml-detail-pitch"></div>
+        <div id="ml-detail-bench"></div>
+
+        <h4 class="ml-section-heading">Transfers this gameweek${hitHtml}</h4>
+        <div class="ml-transfer-list">${transfersHtml}</div>
+
+        <h4 class="ml-section-heading">Chips</h4>
+        <div>${renderChipsCell(gwData.chips)}</div>
+
+        <div class="ml-stat-row" style="margin-top:14px;">
+          <div class="ml-stat-tile"><div class="ml-stat-label">Clone %</div><div class="ml-stat-value">${gwData.cloneRatingPercent != null ? gwData.cloneRatingPercent.toFixed(1) + '%' : '—'}</div></div>
+          <div class="ml-stat-tile"><div class="ml-stat-label">Template %</div><div class="ml-stat-value">${gwData.templateRatingPercent != null ? gwData.templateRatingPercent.toFixed(1) + '%' : '—'}</div></div>
+        </div>
+
+        ${renderSeasonHistory(historyData)}
       `;
 
-      content.querySelectorAll('tr.ml-gw-row').forEach(tr => {
-        tr.addEventListener('click', () => {
-          const detailRow = content.querySelector(`tr[data-event-detail="${tr.dataset.event}"]`);
-          if (!detailRow) return;
-          if (detailRow.style.display !== 'none') {
-            detailRow.style.display = 'none';
-            return;
-          }
-          const td = detailRow.querySelector('td');
-          if (!td.dataset.rendered) {
-            td.innerHTML = transferDetailHtml(transfersByEvent.get(parseInt(tr.dataset.event, 10)));
-            td.dataset.rendered = '1';
-          }
-          detailRow.style.display = '';
-        });
-      });
+      document.getElementById('ml-detail-pitch').innerHTML = renderPitch(startersByPos);
+      document.getElementById('ml-detail-bench').innerHTML = renderBenchStrip(bench, gwData.benchBoostActive);
+
+      wireSeasonHistoryToggles(content, transfers);
     } catch (err) {
-      content.innerHTML = `<p class="muted">Could not load history: ${escapeHtml(err.message)}</p>`;
+      content.innerHTML = `<p class="muted">Could not load manager detail: ${escapeHtml(err.message)}</p>`;
     }
   }
 
