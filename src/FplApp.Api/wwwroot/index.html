@@ -1032,6 +1032,7 @@
             <th data-key="win" class="sortable num">W</th>
             <th data-key="draw" class="sortable num">D</th>
             <th data-key="loss" class="sortable num">L</th>
+            <th data-key="gd" class="sortable num">GD</th>
             <th data-key="points" class="sortable num">Pts</th>
           </tr>
         </thead>
@@ -2170,16 +2171,36 @@
 
   // ---- Teams ----
 
+  // FPL's bootstrap-static leaves played/win/draw/loss/points/position hardcoded at zero for every
+  // team all season (a long-standing quirk of that endpoint, not something that fills in over time),
+  // so the league table is computed here from finished fixtures' actual scores instead.
   function getTeamRows() {
-    let rows = state.bootstrap.teams.map(t => ({
-      position: t.position,
-      name: t.name,
-      played: t.played,
-      win: t.win,
-      draw: t.draw,
-      loss: t.loss,
-      points: t.points,
-    }));
+    const statsByTeam = new Map(state.bootstrap.teams.map(t => [t.id, { played: 0, win: 0, draw: 0, loss: 0, points: 0, gf: 0, ga: 0 }]));
+    for (const f of state.fixtures) {
+      if (!f.finished || f.team_h_score == null || f.team_a_score == null) continue;
+      const home = statsByTeam.get(f.team_h);
+      const away = statsByTeam.get(f.team_a);
+      if (!home || !away) continue;
+
+      home.played++; away.played++;
+      home.gf += f.team_h_score; home.ga += f.team_a_score;
+      away.gf += f.team_a_score; away.ga += f.team_h_score;
+      if (f.team_h_score > f.team_a_score) { home.win++; home.points += 3; away.loss++; }
+      else if (f.team_h_score < f.team_a_score) { away.win++; away.points += 3; home.loss++; }
+      else { home.draw++; away.draw++; home.points++; away.points++; }
+    }
+
+    let rows = state.bootstrap.teams.map(t => {
+      const s = statsByTeam.get(t.id);
+      return { id: t.id, name: t.name, played: s.played, win: s.win, draw: s.draw, loss: s.loss, gf: s.gf, gd: s.gf - s.ga, points: s.points };
+    });
+
+    // Position always follows the standard points -> goal difference -> goals-scored tiebreak,
+    // independent of whatever column the table itself is currently sorted by.
+    const standingsOrder = [...rows].sort((a, b) => b.points - a.points || b.gd - a.gd || b.gf - a.gf);
+    const positionById = new Map(standingsOrder.map((r, i) => [r.id, i + 1]));
+    rows = rows.map(r => ({ ...r, position: positionById.get(r.id) }));
+
     const { key, dir } = state.teamSort;
     rows.sort((a, b) => {
       const av = a[key], bv = b[key];
@@ -2200,6 +2221,7 @@
         <td class="num">${r.win}</td>
         <td class="num">${r.draw}</td>
         <td class="num">${r.loss}</td>
+        <td class="num">${r.gd > 0 ? '+' + r.gd : r.gd}</td>
         <td class="num">${r.points}</td>
       </tr>
     `).join('');
