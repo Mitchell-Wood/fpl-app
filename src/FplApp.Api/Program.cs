@@ -288,6 +288,9 @@ app.MapGet("/api/league-standings", async (int leagueId, int? page, IFplDataServ
         Dictionary<int, bool>? captainYetToPlayByEntry = null;
         Dictionary<int, double>? squadValueByEntry = null;
         Dictionary<int, double>? bankByEntry = null;
+        Dictionary<int, int>? pointsOnBenchByEntry = null;
+        Dictionary<int, int>? transfersMadeByEntry = null;
+        Dictionary<int, int>? transferCostByEntry = null;
         Dictionary<int, Dictionary<string, string>>? chipStatusByEntry = null;
         Dictionary<int, int>? estimatedFreeTransfersByEntry = null;
         Dictionary<int, double>? cloneRatingByEntry = null;
@@ -329,6 +332,18 @@ app.MapGet("/api/league-standings", async (int leagueId, int? page, IFplDataServ
                     .Where(p => p.Picks is not null)
                     .ToDictionary(p => p.Entry, p => p.Picks!.EntryHistory.Bank / 10.0);
 
+                pointsOnBenchByEntry = perEntryData
+                    .Where(p => p.Picks is not null)
+                    .ToDictionary(p => p.Entry, p => p.Picks!.EntryHistory.PointsOnBench);
+
+                transfersMadeByEntry = perEntryData
+                    .Where(p => p.Picks is not null)
+                    .ToDictionary(p => p.Entry, p => p.Picks!.EntryHistory.EventTransfers);
+
+                transferCostByEntry = perEntryData
+                    .Where(p => p.Picks is not null)
+                    .ToDictionary(p => p.Entry, p => p.Picks!.EntryHistory.EventTransfersCost);
+
                 chipStatusByEntry = perEntryData.ToDictionary(p => p.Entry, p => BuildChipStatus(p.Picks?.ActiveChip, p.History?.Chips, eventId));
 
                 estimatedFreeTransfersByEntry = perEntryData
@@ -366,6 +381,9 @@ app.MapGet("/api/league-standings", async (int leagueId, int? page, IFplDataServ
                 estimatedFreeTransfers = estimatedFreeTransfersByEntry != null && estimatedFreeTransfersByEntry.TryGetValue(r.Entry, out var freeTransfers) ? (int?)freeTransfers : null,
                 squadValue = squadValueByEntry != null && squadValueByEntry.TryGetValue(r.Entry, out var squadValue) ? (double?)squadValue : null,
                 bank = bankByEntry != null && bankByEntry.TryGetValue(r.Entry, out var bank) ? (double?)bank : null,
+                pointsOnBench = pointsOnBenchByEntry != null && pointsOnBenchByEntry.TryGetValue(r.Entry, out var pointsOnBench) ? (int?)pointsOnBench : null,
+                transfersMade = transfersMadeByEntry != null && transfersMadeByEntry.TryGetValue(r.Entry, out var transfersMade) ? (int?)transfersMade : null,
+                transferCost = transferCostByEntry != null && transferCostByEntry.TryGetValue(r.Entry, out var transferCost) ? (int?)transferCost : null,
                 chips = chipStatusByEntry != null && chipStatusByEntry.TryGetValue(r.Entry, out var chipStatus) ? chipStatus : null,
                 cloneRatingPercent = cloneRatingByEntry != null && cloneRatingByEntry.TryGetValue(r.Entry, out var cloneRating) ? (double?)cloneRating : null,
                 templateRatingPercent = templateRatingByEntry != null && templateRatingByEntry.TryGetValue(r.Entry, out var templateRating) ? (double?)templateRating : null,

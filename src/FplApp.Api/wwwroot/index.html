@@ -1236,6 +1236,8 @@
             <th class="num sortable ml-detail-col" data-key="estimatedFreeTransfers" title="Estimated from public gameweek history — not an official FPL figure">Free Transfers</th>
             <th class="num sortable ml-detail-col" data-key="squadValue" title="Total squad value, not including money in the bank">Squad Value</th>
             <th class="num sortable ml-detail-col" data-key="bank" title="Unspent money in the bank">Bank</th>
+            <th class="num sortable ml-detail-col" data-key="pointsOnBench" title="Points scored by this gameweek's bench, that didn't count">Bench Pts</th>
+            <th class="num sortable ml-detail-col" data-key="transfersMade" title="Transfers made this gameweek, with any points cost from extra transfers ('hits') shown in brackets">Transfers</th>
             <th class="num ml-detail-col" title="TC = Triple Captain, BB = Bench Boost, FH = Free Hit, WC = Wildcard. Green = playing this gameweek, red = already used this half of the season (resets at GW20).">Chips</th>
             <th class="num sortable ml-detail-col" data-key="cloneRatingPercent" title="How much of this manager's starting XI + captain is shared with other managers this gameweek, via livefpl.net. Higher = more template.">Clone %</th>
             <th class="num sortable ml-detail-col" data-key="templateRatingPercent" title="How heavy each line of your team is compared to top 10k teams">Template %</th>
@@ -3188,7 +3190,7 @@
     const prevSort = state.miniLeague.sort;
 
     state.miniLeague = { leagueId, page, rows: append ? state.miniLeague.rows : [], hasManagerDetail: false, sort: prevSort };
-    if (!append) tbody.innerHTML = `<tr><td colspan="12" class="muted">Loading&hellip;</td></tr>`;
+    if (!append) tbody.innerHTML = `<tr><td colspan="14" class="muted">Loading&hellip;</td></tr>`;
 
     try {
       const res = await fetch(`/api/league-standings?leagueId=${leagueId}&page=${page}`);
@@ -3203,7 +3205,7 @@
       standingsWrap.style.display = '';
       loadMoreWrap.style.display = data.hasNext ? '' : 'none';
     } catch (err) {
-      if (!append) tbody.innerHTML = `<tr><td colspan="12" class="muted">Could not load standings: ${escapeHtml(err.message)}</td></tr>`;
+      if (!append) tbody.innerHTML = `<tr><td colspan="14" class="muted">Could not load standings: ${escapeHtml(err.message)}</td></tr>`;
       document.querySelectorAll('#ml-standings-table .ml-detail-col').forEach(th => { th.style.display = ''; });
     }
   }
@@ -3217,6 +3219,8 @@
         <td class="num">${r.estimatedFreeTransfers ?? '—'}</td>
         <td class="num">${r.squadValue != null ? '£' + r.squadValue.toFixed(1) + 'm' : '—'}</td>
         <td class="num">${r.bank != null ? '£' + r.bank.toFixed(1) + 'm' : '—'}</td>
+        <td class="num">${r.pointsOnBench ?? '—'}</td>
+        <td class="num">${r.transfersMade != null ? r.transfersMade + (r.transferCost ? ` <span class="muted" title="Points cost from extra transfers">(-${r.transferCost})</span>` : '') : '—'}</td>
         <td class="num">${renderChipsCell(r.chips)}</td>
         <td class="num">${r.cloneRatingPercent != null ? r.cloneRatingPercent.toFixed(1) + '%' : '—'}</td>
         <td class="num">${r.templateRatingPercent != null ? r.templateRatingPercent.toFixed(1) + '%' : '—'}</td>
