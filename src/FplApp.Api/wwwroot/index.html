@@ -1051,6 +1051,8 @@
         <input id="ticker-weeks" type="number" min="1" max="20" value="5">
         gameweeks
       </label>
+      <button id="ticker-mode-toggle" type="button" class="secondary" style="margin-left:auto"
+        title="Switch how the Avg difficulty / rank column is calculated">FDR average</button>
     </div>
     <div class="table-wrap">
       <table id="ticker-table">
@@ -1449,6 +1451,7 @@
     playerSort: { key: 'total_points', dir: 'desc' },
     teamSort: { key: 'position', dir: 'asc' },
     tickerSort: { key: 'avg', dir: 'asc' },
+    tickerDifficultyMode: 'fdr', // 'fdr' | 'xg' — see computeTickerRows
     lineupsLoaded: false,
     myTeamLoaded: false,
     miniLeaguesLoaded: false,
@@ -1601,7 +1604,12 @@
     return 0;
   }
 
-  function estimateCleanSheetChance(records, teamId, opponentId, teamIsHome) {
+  // Shared by estimateCleanSheetChance and the ticker's "xG difficulty" mode: estimates both goals
+  // a team is expected to score and concede in one fixture, each direction blending the relevant
+  // team's own attack/defence rate this season with the opponent's, normalized against the league's
+  // average scoring rate in that venue context (home teams typically outscore away teams
+  // league-wide).
+  function estimateFixtureExpectedGoals(records, teamId, opponentId, teamIsHome) {
     const priors = teamPriorRates();
     const teamPrior = priors.get(teamId);
     const opponentPrior = priors.get(opponentId);
@@ -1609,34 +1617,48 @@
 
     const team = records.get(teamId);
     const opponent = records.get(opponentId);
-
     const teamVenue = team ? (teamIsHome ? team.home : team.away) : null;
     const teamOverall = team ? team.overall : null;
+    const opponentVenue = opponent ? (teamIsHome ? opponent.away : opponent.home) : null;
+    const opponentOverall = opponent ? opponent.overall : null;
+    const avgs = leagueVenueAverages(records);
+
     const teamDefenceRate = blendWithPrior(
       venueRate(teamVenue, teamOverall, 'against'),
       venueGames(teamVenue, teamOverall),
       teamIsHome ? teamPrior.home.defence : teamPrior.away.defence);
-
-    const opponentVenue = opponent ? (teamIsHome ? opponent.away : opponent.home) : null;
-    const opponentOverall = opponent ? opponent.overall : null;
     const opponentAttackRate = blendWithPrior(
       venueRate(opponentVenue, opponentOverall, 'for'),
       venueGames(opponentVenue, opponentOverall),
       teamIsHome ? opponentPrior.away.attack : opponentPrior.home.attack);
-
-    // Normalize the opponent's attack rate against the league's average scoring rate in that same
-    // venue context (home teams typically outscore away teams league-wide) — blended with the real
-    // long-run home/away averages, and much slower to shift than a single team's own rate since this
-    // one number affects every fixture's calculation at once.
-    const avgs = leagueVenueAverages(records);
-    const leagueAvg = blendWithPrior(
+    const leagueAvgConceded = blendWithPrior(
       teamIsHome ? avgs.away : avgs.home,
       teamIsHome ? avgs.awayGames : avgs.homeGames,
       teamIsHome ? PRIOR_AWAY_GOALS : PRIOR_HOME_GOALS,
       LEAGUE_AVG_SHRINKAGE_GAMES);
+    const conceded = teamDefenceRate * (opponentAttackRate / leagueAvgConceded);
 
-    const expectedGoalsConceded = teamDefenceRate * (opponentAttackRate / leagueAvg);
-    return Math.exp(-expectedGoalsConceded);
+    const teamAttackRate = blendWithPrior(
+      venueRate(teamVenue, teamOverall, 'for'),
+      venueGames(teamVenue, teamOverall),
+      teamIsHome ? teamPrior.home.attack : teamPrior.away.attack);
+    const opponentDefenceRate = blendWithPrior(
+      venueRate(opponentVenue, opponentOverall, 'against'),
+      venueGames(opponentVenue, opponentOverall),
+      teamIsHome ? opponentPrior.away.defence : opponentPrior.home.defence);
+    const leagueAvgScored = blendWithPrior(
+      teamIsHome ? avgs.home : avgs.away,
+      teamIsHome ? avgs.homeGames : avgs.awayGames,
+      teamIsHome ? PRIOR_HOME_GOALS : PRIOR_AWAY_GOALS,
+      LEAGUE_AVG_SHRINKAGE_GAMES);
+    const scored = teamAttackRate * (opponentDefenceRate / leagueAvgScored);
+
+    return { scored, conceded };
+  }
+
+  function estimateCleanSheetChance(records, teamId, opponentId, teamIsHome) {
+    const xg = estimateFixtureExpectedGoals(records, teamId, opponentId, teamIsHome);
+    return xg ? Math.exp(-xg.conceded) : null;
   }
 
   function csChip(chance) {
@@ -2298,11 +2320,17 @@
     select.addEventListener('change', renderTicker);
   }
 
-  function computeTickerRows(weeks, startGwId) {
+  // mode 'fdr' averages FPL's own 1-5 difficulty rating (chunky, so lots of teams tie on the same
+  // average). Mode 'xg' instead averages a continuous per-fixture score — expected goals conceded
+  // minus expected goals scored, from estimateFixtureExpectedGoals — which almost never ties and so
+  // gives a genuine 1-20 leaderboard. The per-fixture chips always show FPL's own FDR regardless of
+  // mode; only the Avg/rank column's basis changes.
+  function computeTickerRows(weeks, startGwId, mode) {
     const events = state.bootstrap.events;
     const startEvent = (startGwId && events.find(e => e.id === startGwId)) || events.find(e => !e.finished) || events[0];
     if (!startEvent) return [];
     const gwIds = Array.from({ length: weeks }, (_, i) => startEvent.id + i);
+    const records = mode === 'xg' ? computeTeamGoalRecords() : null;
 
     return state.bootstrap.teams.map(team => {
       const gwFixtures = gwIds.map(gwId =>
@@ -2310,15 +2338,24 @@
           .filter(f => f.event === gwId && (f.team_h === team.id || f.team_a === team.id))
           .map(f => {
             const isHome = f.team_h === team.id;
+            const opponentId = isHome ? f.team_a : f.team_h;
+            let xgDifficulty = null;
+            if (mode === 'xg') {
+              const xg = estimateFixtureExpectedGoals(records, team.id, opponentId, isHome);
+              xgDifficulty = xg ? xg.conceded - xg.scored : null;
+            }
             return {
-              opponent: teamName(isHome ? f.team_a : f.team_h),
+              opponent: teamName(opponentId),
               venue: isHome ? 'H' : 'A',
               difficulty: isHome ? f.team_h_difficulty : f.team_a_difficulty,
+              xgDifficulty,
             };
           })
       );
       const flat = gwFixtures.flat();
-      const avg = flat.length ? flat.reduce((sum, f) => sum + f.difficulty, 0) / flat.length : null;
+      const scoreField = mode === 'xg' ? 'xgDifficulty' : 'difficulty';
+      const scored = flat.filter(f => f[scoreField] != null);
+      const avg = scored.length ? scored.reduce((sum, f) => sum + f[scoreField], 0) / scored.length : null;
       return { name: team.name, gwFixtures, avg, fixtureCount: flat.length };
     });
   }
@@ -2327,8 +2364,9 @@
     const weeksInput = document.getElementById('ticker-weeks');
     const weeks = Math.min(20, Math.max(1, parseInt(weeksInput.value, 10) || 5));
     const startGwId = parseInt(document.getElementById('ticker-start-gameweek').value, 10) || null;
+    const mode = state.tickerDifficultyMode;
 
-    let rows = computeTickerRows(weeks, startGwId);
+    let rows = computeTickerRows(weeks, startGwId, mode);
     const rankByRow = rankTickerRowsByDifficulty(rows);
 
     const { key, dir } = state.tickerSort;
@@ -2349,6 +2387,20 @@
       </tr>
     `).join('') || `<tr><td colspan="4" class="muted">No fixture data for this range.</td></tr>`;
     updateSortArrows('ticker-table', state.tickerSort);
+
+    const avgHeader = document.querySelector('#ticker-table th[data-key="avg"]');
+    const toggleBtn = document.getElementById('ticker-mode-toggle');
+    if (mode === 'xg') {
+      avgHeader.textContent = 'Avg xG difficulty';
+      avgHeader.title = 'Expected goals conceded minus expected goals scored, averaged over the lookahead window — continuous, so ties are rare';
+      toggleBtn.textContent = 'xG average';
+      toggleBtn.title = 'Using a continuous expected-goals-based difficulty score — click to switch back to FPL\'s own 1-5 FDR average';
+    } else {
+      avgHeader.textContent = 'Avg difficulty';
+      avgHeader.title = "FPL's own 1-5 fixture difficulty rating, averaged over the lookahead window — many teams can tie on the same average";
+      toggleBtn.textContent = 'FDR average';
+      toggleBtn.title = 'Using FPL\'s own 1-5 fixture difficulty rating — click to switch to a continuous expected-goals-based average';
+    }
   }
 
   // Teams with the same average difficulty share the same rank (1224 competition ranking),
@@ -3891,6 +3943,10 @@
   document.getElementById('player-position').addEventListener('change', renderPlayers);
   wireSorting('ticker-table', state.tickerSort, renderTicker);
   document.getElementById('ticker-weeks').addEventListener('input', renderTicker);
+  document.getElementById('ticker-mode-toggle').addEventListener('click', () => {
+    state.tickerDifficultyMode = state.tickerDifficultyMode === 'fdr' ? 'xg' : 'fdr';
+    renderTicker();
+  });
   document.getElementById('rec-position').addEventListener('change', renderRecommendations);
   document.getElementById('rec-count').addEventListener('input', renderRecommendations);
   document.getElementById('rec-fixture-weeks').addEventListener('input', renderRecommendations);
