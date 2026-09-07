@@ -509,6 +509,33 @@
   .diff-double {
     background: var(--series-1);
   }
+  .trend-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-bottom: 10px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+  }
+  .trend-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .trend-legend-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    display: inline-block;
+  }
+  .trend-svg {
+    width: 100%;
+    height: auto;
+  }
+  .trend-axis-label {
+    fill: var(--text-muted);
+    font-size: 11px;
+  }
   .section-heading {
     font-size: 1.05rem;
     font-weight: 700;
@@ -1082,28 +1109,13 @@
       </table>
     </div>
 
-    <h2 class="section-heading">Fixtures by gameweek</h2>
-    <div class="controls">
-      <select id="fixture-gameweek"></select>
-    </div>
-    <div class="table-wrap">
-      <table id="fixtures-table">
-        <thead>
-          <tr>
-            <th>Kickoff</th>
-            <th>Home</th>
-            <th>Difficulty</th>
-            <th title="Estimated clean sheet chance, from this season's goals scored/conceded blended with preseason strength ratings">Home CS%</th>
-            <th></th>
-            <th>Away</th>
-            <th>Difficulty</th>
-            <th title="Estimated clean sheet chance, from this season's goals scored/conceded blended with preseason strength ratings">Away CS%</th>
-            <th>Score</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </div>
+    <h2 class="section-heading">Team strength trend</h2>
+    <p class="subtitle" style="margin-top:-8px">
+      Each team's rolling net goal difference per gameweek this season, from actual results — not a
+      fixture-difficulty forecast. The 5 teams currently in the best form are highlighted; the rest
+      are shown in gray for context, and the highlighted set updates as results come in.
+    </p>
+    <div id="strength-trend-chart"></div>
   </section>
 
   <section id="bonus-points" class="panel">
@@ -1702,7 +1714,6 @@
       statusEl.style.display = 'none';
       initDeadlineCountdown();
       initPositionFilter();
-      initGameweekFilter();
       initTickerStartGameweekFilter();
       initBonusGameweekFilter();
       initLineupGameweekFilter();
@@ -1712,7 +1723,7 @@
       initComparePanel();
       renderPlayers();
       renderTeams();
-      renderFixtures();
+      renderStrengthTrend();
       renderBonusPoints();
       renderTicker();
       renderBlankDoubleGameweeks();
@@ -1766,7 +1777,7 @@
 
       renderPlayers();
       renderTeams();
-      renderFixtures();
+      renderStrengthTrend();
       renderBonusPoints();
       renderTicker();
       renderBlankDoubleGameweeks();
@@ -2254,53 +2265,105 @@
     updateSortArrows('teams-table', state.teamSort);
   }
 
-  // ---- Fixtures ----
+  // ---- Team strength trend ----
+  // A rolling net goal difference per gameweek, from actual finished results only — distinct from
+  // the forward-looking fixture-difficulty ticker below: this measures how a team has actually been
+  // playing recently, not how kind their run of opponents is. The rolling window smooths out one-off
+  // scorelines; the most recent point per team decides the top-5 "in form" highlight, which is
+  // recomputed on every render so it shifts as results come in.
+  const STRENGTH_TREND_ROLLING_WINDOW = 4;
+  const STRENGTH_TREND_HIGHLIGHT_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4'];
+  const STRENGTH_TREND_HIGHLIGHT_COUNT = 5;
 
-  function initGameweekFilter() {
-    const select = document.getElementById('fixture-gameweek');
-    const events = state.bootstrap.events;
-    select.innerHTML = '';
-    for (const e of events) {
-      const opt = document.createElement('option');
-      opt.value = e.id;
-      opt.textContent = e.name + (e.is_next ? ' (next)' : e.is_current ? ' (current)' : '');
-      if (e.is_next || e.is_current) opt.selected = true;
-      select.appendChild(opt);
+  function computeTeamStrengthTrend() {
+    const gwIds = state.bootstrap.events.filter(e => e.finished).map(e => e.id).sort((a, b) => a - b);
+    if (!gwIds.length) return { gwIds: [], series: [] };
+
+    const perTeamGwDiff = new Map(state.bootstrap.teams.map(t => [t.id, new Map()]));
+    for (const f of state.fixtures) {
+      if (!f.finished_provisional || f.team_h_score == null || f.team_a_score == null) continue;
+      const hMap = perTeamGwDiff.get(f.team_h);
+      const aMap = perTeamGwDiff.get(f.team_a);
+      if (hMap) hMap.set(f.event, (hMap.get(f.event) || 0) + (f.team_h_score - f.team_a_score));
+      if (aMap) aMap.set(f.event, (aMap.get(f.event) || 0) + (f.team_a_score - f.team_h_score));
     }
-    if (!select.value && events.length) select.value = events[0].id;
-    select.addEventListener('change', renderFixtures);
+
+    const series = state.bootstrap.teams.map(team => {
+      const diffs = gwIds.map(gwId => perTeamGwDiff.get(team.id).get(gwId) ?? 0);
+      const rolling = diffs.map((_, i) => {
+        const start = Math.max(0, i - STRENGTH_TREND_ROLLING_WINDOW + 1);
+        const window = diffs.slice(start, i + 1);
+        return window.reduce((sum, v) => sum + v, 0) / window.length;
+      });
+      return { id: team.id, name: team.name, rolling };
+    });
+
+    return { gwIds, series };
   }
 
-  function renderFixtures() {
-    const gw = document.getElementById('fixture-gameweek').value;
-    const rows = state.fixtures.filter(f => String(f.event) === gw);
-    rows.sort((a, b) => new Date(a.kickoff_time || 0) - new Date(b.kickoff_time || 0));
+  function renderStrengthTrend() {
+    const container = document.getElementById('strength-trend-chart');
+    const { gwIds, series } = computeTeamStrengthTrend();
+    if (!gwIds.length) {
+      container.innerHTML = `<p class="status-msg">No completed gameweeks yet this season.</p>`;
+      return;
+    }
 
-    const tbody = document.querySelector('#fixtures-table tbody');
-    const goalRecords = computeTeamGoalRecords();
-    tbody.innerHTML = rows.map(f => {
-      const kickoff = f.kickoff_time
-        ? new Date(f.kickoff_time).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
-        : 'TBC';
-      const score = f.finished || f.started
-        ? `${f.team_h_score ?? '-'} – ${f.team_a_score ?? '-'}`
-        : '—';
-      const homeCs = estimateCleanSheetChance(goalRecords, f.team_h, f.team_a, true);
-      const awayCs = estimateCleanSheetChance(goalRecords, f.team_a, f.team_h, false);
-      return `
-        <tr>
-          <td>${kickoff}</td>
-          <td>${escapeHtml(teamName(f.team_h))}</td>
-          <td>${diffChip(f.team_h_difficulty)}</td>
-          <td class="num">${csChip(homeCs)}</td>
-          <td class="muted">vs</td>
-          <td>${escapeHtml(teamName(f.team_a))}</td>
-          <td>${diffChip(f.team_a_difficulty)}</td>
-          <td class="num">${csChip(awayCs)}</td>
-          <td class="num">${score}</td>
-        </tr>
-      `;
-    }).join('') || `<tr><td colspan="9" class="muted">No fixtures this gameweek.</td></tr>`;
+    const topIds = series
+      .slice()
+      .sort((a, b) => (b.rolling[b.rolling.length - 1] ?? -Infinity) - (a.rolling[a.rolling.length - 1] ?? -Infinity))
+      .slice(0, STRENGTH_TREND_HIGHLIGHT_COUNT)
+      .map(s => s.id);
+    const colorByTeamId = new Map(topIds.map((id, i) => [id, STRENGTH_TREND_HIGHLIGHT_COLORS[i]]));
+
+    const width = 800, height = 300, padL = 32, padR = 16, padT = 16, padB = 26;
+    const plotW = width - padL - padR, plotH = height - padT - padB;
+    const maxAbs = Math.max(1, ...series.flatMap(s => s.rolling.map(v => Math.abs(v))));
+    const xFor = i => padL + (gwIds.length === 1 ? plotW / 2 : (i / (gwIds.length - 1)) * plotW);
+    const yFor = v => padT + plotH / 2 - (v / maxAbs) * (plotH / 2);
+    const pathFor = rolling => rolling.map((v, i) => `${i === 0 ? 'M' : 'L'} ${xFor(i).toFixed(1)} ${yFor(v).toFixed(1)}`).join(' ');
+
+    const grayPaths = series
+      .filter(s => !colorByTeamId.has(s.id))
+      .map(s => `<path d="${pathFor(s.rolling)}" fill="none" stroke="var(--text-muted)" stroke-width="1" opacity="0.5" />`)
+      .join('');
+
+    const highlightPaths = series
+      .filter(s => colorByTeamId.has(s.id))
+      .map(s => {
+        const color = colorByTeamId.get(s.id);
+        const last = s.rolling.length - 1;
+        return `
+          <path d="${pathFor(s.rolling)}" fill="none" stroke="${color}" stroke-width="2" />
+          <circle cx="${xFor(last).toFixed(1)}" cy="${yFor(s.rolling[last]).toFixed(1)}" r="4" fill="${color}">
+            <title>${escapeHtml(s.name)}: ${s.rolling[last].toFixed(2)} rolling net goal difference/gw</title>
+          </circle>
+        `;
+      })
+      .join('');
+
+    const zeroY = yFor(0).toFixed(1);
+    const xLabelEvery = Math.ceil(gwIds.length / 12) || 1;
+    const xLabels = gwIds
+      .map((gwId, i) => (i % xLabelEvery === 0 || i === gwIds.length - 1)
+        ? `<text x="${xFor(i).toFixed(1)}" y="${height - 6}" class="trend-axis-label" text-anchor="middle">GW${gwId}</text>`
+        : '')
+      .join('');
+
+    const legend = topIds.map(id => {
+      const team = series.find(s => s.id === id);
+      return `<span class="trend-legend-item"><span class="trend-legend-swatch" style="background:${colorByTeamId.get(id)}"></span>${escapeHtml(team.name)}</span>`;
+    }).join('') + `<span class="trend-legend-item"><span class="trend-legend-swatch" style="background:var(--text-muted);opacity:0.5"></span>Other teams</span>`;
+
+    container.innerHTML = `
+      <div class="trend-legend">${legend}</div>
+      <svg viewBox="0 0 ${width} ${height}" class="trend-svg" role="img" aria-label="Rolling net goal difference per gameweek by team, with the 5 currently best-performing teams highlighted">
+        <line x1="${padL}" y1="${zeroY}" x2="${width - padR}" y2="${zeroY}" stroke="var(--border)" stroke-width="1" />
+        ${grayPaths}
+        ${highlightPaths}
+        ${xLabels}
+      </svg>
+    `;
   }
 
   // ---- Fixture difficulty ticker ----
