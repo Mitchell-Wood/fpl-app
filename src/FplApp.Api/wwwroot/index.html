@@ -1189,6 +1189,22 @@
     <div id="my-team-status" class="status-msg" style="display:none"></div>
     <div id="my-team-summary" class="subtitle"></div>
     <div id="my-team-stats" class="stat-row" style="display:none"></div>
+    <div id="manual-transfer-panel" style="display:none;margin-bottom:16px;">
+      <div class="lineup-card">
+        <div style="font-weight:700;margin-bottom:2px;">Add a transfer</div>
+        <p class="muted" style="font-size:0.82rem;margin:2px 0 10px;">
+          Pick anyone from your squad and a replacement in the same position — this only plans the
+          transfer here, it doesn't make it on the FPL site.
+        </p>
+        <div class="controls" style="margin-bottom:0;">
+          <select id="manual-transfer-out" style="min-width:220px;"></select>
+          <span class="muted">for</span>
+          <select id="manual-transfer-in" style="min-width:220px;"></select>
+          <button id="manual-transfer-add" type="button">Add</button>
+        </div>
+        <div id="manual-transfer-error" class="muted" style="font-size:0.8rem;color:var(--status-critical);display:none;margin-top:6px;"></div>
+      </div>
+    </div>
     <div id="planned-transfers-panel" style="display:none;margin-bottom:16px;">
       <div class="lineup-card" style="border-color:var(--series-1);">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
@@ -2951,6 +2967,73 @@
     panel.style.display = '';
   }
 
+  // Lets you plan a transfer that wasn't one of the algorithm's own suggestions — any squad player
+  // for any same-position replacement. Kept restricted to the same position (rather than a free pick
+  // of any player) so the resulting squad still has a legal 2-5-5-3 shape for the lineup optimizer to
+  // work with.
+  function populateManualTransferForm(currentPicks) {
+    const outSelect = document.getElementById('manual-transfer-out');
+    const previousOutId = outSelect.value;
+    const sortedPicks = [...currentPicks].sort((a, b) => a.elementType - b.elementType || a.webName.localeCompare(b.webName));
+    outSelect.innerHTML = sortedPicks.map(p =>
+      `<option value="${p.playerId}" data-element-type="${p.elementType}">${escapeHtml(p.webName)} (${escapeHtml(p.teamName)}, ${escapeHtml(positionName(p.elementType))})</option>`
+    ).join('');
+    if (sortedPicks.some(p => String(p.playerId) === previousOutId)) {
+      outSelect.value = previousOutId;
+    }
+    populateManualTransferInOptions(currentPicks);
+  }
+
+  function populateManualTransferInOptions(currentPicks) {
+    const outSelect = document.getElementById('manual-transfer-out');
+    const inSelect = document.getElementById('manual-transfer-in');
+    const selectedOption = outSelect.selectedOptions[0];
+    if (!selectedOption) {
+      inSelect.innerHTML = '';
+      return;
+    }
+
+    const elementType = parseInt(selectedOption.dataset.elementType, 10);
+    const squadIds = new Set(currentPicks.map(p => p.playerId));
+    const candidates = state.bootstrap.elements
+      .filter(e => e.element_type === elementType && e.status === 'a' && !squadIds.has(e.id))
+      .sort((a, b) => b.total_points - a.total_points);
+
+    inSelect.innerHTML = candidates.map(e =>
+      `<option value="${e.id}">${escapeHtml(e.web_name)} (${escapeHtml(teamName(e.team))}) &middot; £${(e.now_cost / 10).toFixed(1)}m &middot; ${e.total_points} pts</option>`
+    ).join('');
+  }
+
+  function addManualTransfer() {
+    const errorEl = document.getElementById('manual-transfer-error');
+    errorEl.style.display = 'none';
+
+    const outId = parseInt(document.getElementById('manual-transfer-out').value, 10);
+    const inId = parseInt(document.getElementById('manual-transfer-in').value, 10);
+    if (!outId || !inId) {
+      errorEl.textContent = 'Pick both a player to transfer out and a replacement.';
+      errorEl.style.display = '';
+      return;
+    }
+
+    const outPick = (state.myTeam?.picks || []).find(p => p.playerId === outId);
+    const inPlayer = state.bootstrap.elements.find(e => e.id === inId);
+    if (!outPick || !inPlayer) {
+      errorEl.textContent = 'Could not find one of those players — try reloading your team.';
+      errorEl.style.display = '';
+      return;
+    }
+
+    addPlannedTransfer({
+      outId,
+      outWebName: outPick.webName,
+      outTeamName: outPick.teamName,
+      inId,
+      inWebName: inPlayer.web_name,
+      inTeamName: teamName(inPlayer.team),
+    });
+  }
+
   // The manager's current, locked-in squad — picks aren't public for a gameweek until its
   // deadline passes, so there's nothing to show yet for "next" even once it exists.
   function getMyTeamCurrentEventId() {
@@ -3458,6 +3541,7 @@
     templateComparisonSection.style.display = 'none';
     document.getElementById('my-team-pitch-wrap').style.display = 'none';
     document.getElementById('planned-transfers-panel').style.display = 'none';
+    document.getElementById('manual-transfer-panel').style.display = 'none';
     captaincySection.style.display = 'none';
     transferSuggestionsSection.style.display = 'none';
 
@@ -3513,8 +3597,10 @@
       renderChipAdvisor(data.chips);
       renderTemplateComparison(data.picks);
       tableWrap.style.display = '';
-      state.myTeam = { teamId, eventId };
+      state.myTeam = { teamId, eventId, picks: data.picks };
       renderPlannedTransfers();
+      populateManualTransferForm(data.picks);
+      document.getElementById('manual-transfer-panel').style.display = '';
 
       if (captainRes.ok) {
         const captainData = await captainRes.json();
@@ -4173,6 +4259,10 @@
     removePlannedTransfer(parseInt(btn.dataset.undoTransferOut, 10));
   });
   document.getElementById('planned-transfers-clear').addEventListener('click', clearPlannedTransfers);
+  document.getElementById('manual-transfer-out').addEventListener('change', () => {
+    populateManualTransferInOptions(state.myTeam?.picks || []);
+  });
+  document.getElementById('manual-transfer-add').addEventListener('click', addManualTransfer);
   function onTransferControlsChanged() {
     if (!state.myTeam) return;
     loadTransferSuggestions(state.myTeam.teamId, state.myTeam.eventId);
