@@ -1189,6 +1189,22 @@
     <div id="my-team-status" class="status-msg" style="display:none"></div>
     <div id="my-team-summary" class="subtitle"></div>
     <div id="my-team-stats" class="stat-row" style="display:none"></div>
+    <div id="planned-transfers-panel" style="display:none;margin-bottom:16px;">
+      <div class="lineup-card" style="border-color:var(--series-1);">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+          <div style="font-weight:700;">
+            Showing your starting XI and captain for a planned squad, not your live FPL squad
+          </div>
+          <button id="planned-transfers-clear" type="button" class="secondary">Clear all</button>
+        </div>
+        <p class="muted" style="font-size:0.82rem;margin:4px 0 10px;">
+          These transfers haven't been made on the official FPL site yet — they're only saved in this
+          browser so you can plan your lineup and captain ahead of a deadline. Clear them once you've
+          actually made the transfers.
+        </p>
+        <div id="planned-transfers-list"></div>
+      </div>
+    </div>
     <div id="my-team-pitch-wrap" style="display:none;margin-bottom:24px;">
       <div id="my-team-formation" class="muted" style="font-size:0.82rem;font-weight:700;margin-bottom:8px;"></div>
       <div id="my-team-pitch"></div>
@@ -1466,6 +1482,7 @@
     tickerDifficultyMode: 'fdr', // 'fdr' | 'xg' — see computeTickerRows
     lineupsLoaded: false,
     myTeamLoaded: false,
+    plannedTransfers: [],
     miniLeaguesLoaded: false,
     miniLeague: { leagueId: null, page: 1, rows: [], hasManagerDetail: false, sort: { key: 'rank', dir: 'asc' } },
     myTeam: null, // { teamId, eventId }
@@ -2839,6 +2856,101 @@
   const MY_TEAM_ID_STORAGE_KEY = 'fplapp:teamId';
   const WINNING_TEAM_ID = '59619';
 
+  // ---- Planned transfers ----
+  // Transfers you've decided on but haven't made on the official FPL site yet — the live picks
+  // endpoint has no way to know about those, so the starting XI/captain recommendations would still
+  // be for your old squad. Kept in localStorage (per team ID) rather than sent anywhere, and threaded
+  // into /api/my-team and /api/captain-suggestions as a "plannedTransfers" query param so the same
+  // backend optimizer logic runs against the hypothetical squad instead of duplicating it in JS.
+
+  function plannedTransfersStorageKey(teamId) {
+    return `fplapp:plannedTransfers:${teamId}`;
+  }
+
+  function loadPlannedTransfers(teamId) {
+    try {
+      return JSON.parse(localStorage.getItem(plannedTransfersStorageKey(teamId)) || '[]');
+    } catch {
+      return [];
+    }
+  }
+
+  function savePlannedTransfers(teamId, transfers) {
+    localStorage.setItem(plannedTransfersStorageKey(teamId), JSON.stringify(transfers));
+  }
+
+  function isPlayerPlannedOut(outId) {
+    return (state.plannedTransfers || []).some(t => t.outId === outId);
+  }
+
+  function isSwapPlanned(outId, inId) {
+    return (state.plannedTransfers || []).some(t => t.outId === outId && t.inId === inId);
+  }
+
+  function plannedTransfersQueryParam() {
+    const transfers = state.plannedTransfers || [];
+    return transfers.length
+      ? `&plannedTransfers=${encodeURIComponent(transfers.map(t => `${t.outId}-${t.inId}`).join(','))}`
+      : '';
+  }
+
+  function addPlannedTransfer(transfer) {
+    const teamId = state.myTeam?.teamId;
+    if (!teamId) return;
+    const transfers = state.plannedTransfers || [];
+    // A player already planned out (as either side of an existing swap) can't be planned again —
+    // undo the existing swap first, so a squad slot is never claimed by two planned transfers at once.
+    if (transfers.some(t => [t.outId, t.inId].includes(transfer.outId) || [t.outId, t.inId].includes(transfer.inId))) {
+      return;
+    }
+    transfers.push(transfer);
+    state.plannedTransfers = transfers;
+    savePlannedTransfers(teamId, transfers);
+    renderPlannedTransfers();
+    loadMyTeam();
+  }
+
+  function removePlannedTransfer(outId) {
+    const teamId = state.myTeam?.teamId;
+    if (!teamId) return;
+    const transfers = (state.plannedTransfers || []).filter(t => t.outId !== outId);
+    state.plannedTransfers = transfers;
+    savePlannedTransfers(teamId, transfers);
+    renderPlannedTransfers();
+    loadMyTeam();
+  }
+
+  function clearPlannedTransfers() {
+    const teamId = state.myTeam?.teamId;
+    if (!teamId) return;
+    state.plannedTransfers = [];
+    savePlannedTransfers(teamId, []);
+    renderPlannedTransfers();
+    loadMyTeam();
+  }
+
+  function renderPlannedTransfers() {
+    const panel = document.getElementById('planned-transfers-panel');
+    const list = document.getElementById('planned-transfers-list');
+    const transfers = state.plannedTransfers || [];
+    if (!transfers.length) {
+      panel.style.display = 'none';
+      list.innerHTML = '';
+      return;
+    }
+    list.innerHTML = transfers.map(t => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;gap:8px;flex-wrap:wrap;">
+        <span>
+          <strong>${escapeHtml(t.outWebName)}</strong> <span class="muted">(${escapeHtml(t.outTeamName)})</span>
+          &rarr;
+          <strong>${escapeHtml(t.inWebName)}</strong> <span class="muted">(${escapeHtml(t.inTeamName)})</span>
+        </span>
+        <button type="button" class="secondary" style="height:28px;padding:0 10px;font-size:0.78rem;" data-undo-transfer-out="${t.outId}">Undo</button>
+      </div>
+    `).join('');
+    panel.style.display = '';
+  }
+
   // The manager's current, locked-in squad — picks aren't public for a gameweek until its
   // deadline passes, so there's nothing to show yet for "next" even once it exists.
   function getMyTeamCurrentEventId() {
@@ -3067,13 +3179,26 @@
 
     const heading = `<div class="muted" style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.045em;margin-bottom:4px;">One-transfer ideas, biggest upgrade first</div>`;
     const rows = suggestions.map((s, i) => {
+      const alreadyPlannedOut = isPlayerPlannedOut(s.outPlayerId);
       const candidatesHtml = s.candidates.length
-        ? s.candidates.map((c, ci) => `
-            <div style="display:flex;justify-content:space-between;padding:4px 0;">
+        ? s.candidates.map((c, ci) => {
+            const thisSwapPlanned = isSwapPlanned(s.outPlayerId, c.playerId);
+            const planButton = thisSwapPlanned
+              ? '<span class="plan-tag plan-tag-free">Planned</span>'
+              : `<button type="button" class="secondary plan-transfer-btn" style="height:26px;padding:0 8px;font-size:0.76rem;"
+                   ${alreadyPlannedOut ? 'disabled title="Undo the other planned transfer for this player first"' : ''}
+                   data-out-id="${s.outPlayerId}" data-out-name="${escapeHtml(s.outWebName)}" data-out-team="${escapeHtml(s.outTeamName)}"
+                   data-in-id="${c.playerId}" data-in-name="${escapeHtml(c.webName)}" data-in-team="${escapeHtml(c.teamName)}">Plan this</button>`;
+            return `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;gap:8px;flex-wrap:wrap;">
               <span>${escapeHtml(c.webName)} <span class="muted">(${escapeHtml(c.teamName)})</span> ${fixtureChipFor(c.teamName)}${ci === 0 ? ' <span class="captain-badge">Best fit</span>' : ''}</span>
-              <span class="num">£${(c.nowCost / 10).toFixed(1)}m &middot; Form ${c.form.toFixed(1)} &middot; ${c.totalPoints} pts</span>
+              <span style="display:flex;align-items:center;gap:8px;">
+                <span class="num">£${(c.nowCost / 10).toFixed(1)}m &middot; Form ${c.form.toFixed(1)} &middot; ${c.totalPoints} pts</span>
+                ${planButton}
+              </span>
             </div>
-          `).join('')
+          `;
+          }).join('')
         : `<p class="muted">No affordable alternatives found within budget.</p>`;
 
       let planTag = '';
@@ -3332,6 +3457,7 @@
     chipAdvisorSection.style.display = 'none';
     templateComparisonSection.style.display = 'none';
     document.getElementById('my-team-pitch-wrap').style.display = 'none';
+    document.getElementById('planned-transfers-panel').style.display = 'none';
     captaincySection.style.display = 'none';
     transferSuggestionsSection.style.display = 'none';
 
@@ -3343,6 +3469,8 @@
     }
 
     localStorage.setItem(MY_TEAM_ID_STORAGE_KEY, teamId);
+    state.plannedTransfers = loadPlannedTransfers(teamId);
+    const plannedParam = plannedTransfersQueryParam();
 
     statusEl.textContent = 'Loading your team…';
     statusEl.classList.remove('error');
@@ -3350,8 +3478,8 @@
 
     try {
       const [teamRes, captainRes, transferRes] = await Promise.all([
-        fetch(`/api/my-team?teamId=${encodeURIComponent(teamId)}&eventId=${encodeURIComponent(eventId)}`),
-        fetch(`/api/captain-suggestions?teamId=${encodeURIComponent(teamId)}&eventId=${encodeURIComponent(eventId)}`),
+        fetch(`/api/my-team?teamId=${encodeURIComponent(teamId)}&eventId=${encodeURIComponent(eventId)}${plannedParam}`),
+        fetch(`/api/captain-suggestions?teamId=${encodeURIComponent(teamId)}&eventId=${encodeURIComponent(eventId)}${plannedParam}`),
         fetch(`/api/transfer-suggestions?teamId=${encodeURIComponent(teamId)}&eventId=${encodeURIComponent(eventId)}&fixtureWeeks=${getTransferFixtureWeeks()}&freeTransfers=${getFreeTransfersCount()}`),
       ]);
       if (teamRes.status === 404) {
@@ -3386,6 +3514,7 @@
       renderTemplateComparison(data.picks);
       tableWrap.style.display = '';
       state.myTeam = { teamId, eventId };
+      renderPlannedTransfers();
 
       if (captainRes.ok) {
         const captainData = await captainRes.json();
@@ -4026,6 +4155,24 @@
     document.getElementById('my-team-id').value = WINNING_TEAM_ID;
     loadMyTeam();
   });
+  document.getElementById('transfer-suggestions-content').addEventListener('click', e => {
+    const btn = e.target.closest('.plan-transfer-btn');
+    if (!btn || btn.disabled) return;
+    addPlannedTransfer({
+      outId: parseInt(btn.dataset.outId, 10),
+      outWebName: btn.dataset.outName,
+      outTeamName: btn.dataset.outTeam,
+      inId: parseInt(btn.dataset.inId, 10),
+      inWebName: btn.dataset.inName,
+      inTeamName: btn.dataset.inTeam,
+    });
+  });
+  document.getElementById('planned-transfers-list').addEventListener('click', e => {
+    const btn = e.target.closest('[data-undo-transfer-out]');
+    if (!btn) return;
+    removePlannedTransfer(parseInt(btn.dataset.undoTransferOut, 10));
+  });
+  document.getElementById('planned-transfers-clear').addEventListener('click', clearPlannedTransfers);
   function onTransferControlsChanged() {
     if (!state.myTeam) return;
     loadTransferSuggestions(state.myTeam.teamId, state.myTeam.eventId);

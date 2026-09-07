@@ -100,7 +100,7 @@ app.MapGet("/api/player-recommendations", async (int? elementType, int? count, i
     })
     .WithName("GetPlayerRecommendations");
 
-app.MapGet("/api/my-team", async (int teamId, int eventId, IFplDataService fplDataService, SquadAnalysisService squadAnalysisService, LineupOptimizerService lineupOptimizerService, CancellationToken cancellationToken) =>
+app.MapGet("/api/my-team", async (int teamId, int eventId, string? plannedTransfers, IFplDataService fplDataService, SquadAnalysisService squadAnalysisService, LineupOptimizerService lineupOptimizerService, CancellationToken cancellationToken) =>
     {
         var entry = await fplDataService.GetEntryAsync(teamId, cancellationToken);
         if (entry is null)
@@ -125,6 +125,7 @@ app.MapGet("/api/my-team", async (int teamId, int eventId, IFplDataService fplDa
         var bootstrap = await fplDataService.GetBootstrapStaticAsync(cancellationToken);
         var fixtures = await fplDataService.GetFixturesAsync(cancellationToken);
         var history = await fplDataService.GetHistoryAsync(teamId, cancellationToken);
+        picks = ApplyPlannedTransfers(picks, plannedTransfers, bootstrap.Elements.ToDictionary(p => p.Id));
         var squad = squadAnalysisService.AnalyzeSquad(bootstrap, fixtures, picks);
 
         // Recommend a starting XI/captain for the next gameweek (the one whose deadline hasn't
@@ -167,7 +168,7 @@ app.MapGet("/api/my-team", async (int teamId, int eventId, IFplDataService fplDa
     })
     .WithName("GetMyTeam");
 
-app.MapGet("/api/captain-suggestions", async (int teamId, int eventId, IFplDataService fplDataService, CaptaincyService captaincyService, LineupOptimizerService lineupOptimizerService, CancellationToken cancellationToken) =>
+app.MapGet("/api/captain-suggestions", async (int teamId, int eventId, string? plannedTransfers, IFplDataService fplDataService, CaptaincyService captaincyService, LineupOptimizerService lineupOptimizerService, CancellationToken cancellationToken) =>
     {
         var entry = await fplDataService.GetEntryAsync(teamId, cancellationToken);
         if (entry is null)
@@ -183,6 +184,7 @@ app.MapGet("/api/captain-suggestions", async (int teamId, int eventId, IFplDataS
 
         var bootstrap = await fplDataService.GetBootstrapStaticAsync(cancellationToken);
         var fixtures = await fplDataService.GetFixturesAsync(cancellationToken);
+        picks = ApplyPlannedTransfers(picks, plannedTransfers, bootstrap.Elements.ToDictionary(p => p.Id));
 
         // Captaincy only matters for a gameweek whose deadline hasn't passed yet, so score against
         // the next upcoming gameweek's fixtures rather than the (already-locked) squad's own one —
@@ -391,6 +393,89 @@ app.MapGet("/api/league-standings", async (int leagueId, int? page, IFplDataServ
         });
     })
     .WithName("GetLeagueStandings");
+
+// Lets the frontend preview "who to captain / who to start" for transfers it's decided on but not
+// yet made on the real FPL site — the live picks endpoint has no way to know about those. Swaps are
+// passed as a query string ("outId-inId,outId-inId"), always applied to a clone of the cached picks
+// (never the cached object itself, which is shared across concurrent requests) so a hypothetical
+// swap for one request can never leak into another's "real" squad. An out id with no matching pick
+// (already transferred out for real, or a stale/invalid entry) is silently ignored rather than
+// erroring, since the client is the only source of this data and can't validate it server-side first.
+static TeamPicks ApplyPlannedTransfers(TeamPicks picks, string? plannedTransfers, Dictionary<int, Player> playersById)
+{
+    var swaps = ParsePlannedTransfers(plannedTransfers);
+    if (swaps.Count == 0)
+    {
+        return picks;
+    }
+
+    var newPicks = picks.Picks.Select(p => new Pick
+    {
+        Element = p.Element,
+        Position = p.Position,
+        Multiplier = p.Multiplier,
+        IsCaptain = p.IsCaptain,
+        IsViceCaptain = p.IsViceCaptain,
+    }).ToList();
+
+    var costDelta = 0;
+    foreach (var (outId, inId) in swaps)
+    {
+        var pick = newPicks.FirstOrDefault(p => p.Element == outId);
+        if (pick is null)
+        {
+            continue;
+        }
+
+        pick.Element = inId;
+        // The captain/vice-captain (if it was either) is leaving the squad — the recommendation
+        // logic that consumes these picks recomputes both from scratch anyway, so this just avoids
+        // handing it a captain who's no longer part of the squad.
+        pick.IsCaptain = false;
+        pick.IsViceCaptain = false;
+
+        if (playersById.TryGetValue(outId, out var outPlayer) && playersById.TryGetValue(inId, out var inPlayer))
+        {
+            costDelta += inPlayer.NowCost - outPlayer.NowCost;
+        }
+    }
+
+    return new TeamPicks
+    {
+        ActiveChip = picks.ActiveChip,
+        EntryHistory = new EntryHistory
+        {
+            Event = picks.EntryHistory.Event,
+            Points = picks.EntryHistory.Points,
+            TotalPoints = picks.EntryHistory.TotalPoints,
+            Bank = picks.EntryHistory.Bank - costDelta,
+            Value = picks.EntryHistory.Value,
+            EventTransfers = picks.EntryHistory.EventTransfers,
+            EventTransfersCost = picks.EntryHistory.EventTransfersCost,
+            PointsOnBench = picks.EntryHistory.PointsOnBench,
+        },
+        Picks = newPicks,
+    };
+}
+
+static List<(int Out, int In)> ParsePlannedTransfers(string? plannedTransfers)
+{
+    var result = new List<(int, int)>();
+    if (string.IsNullOrWhiteSpace(plannedTransfers))
+    {
+        return result;
+    }
+
+    foreach (var pair in plannedTransfers.Split(',', StringSplitOptions.RemoveEmptyEntries))
+    {
+        var parts = pair.Split('-', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 2 && int.TryParse(parts[0], out var outId) && int.TryParse(parts[1], out var inId))
+        {
+            result.Add((outId, inId));
+        }
+    }
+    return result;
+}
 
 static List<CaptainFixture> BuildNextFixtures(Player player, Dictionary<int, Team> teamsById, List<Fixture> eventFixtures)
 {
