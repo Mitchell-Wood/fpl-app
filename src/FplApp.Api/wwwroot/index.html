@@ -2329,6 +2329,7 @@
     const startGwId = parseInt(document.getElementById('ticker-start-gameweek').value, 10) || null;
 
     let rows = computeTickerRows(weeks, startGwId);
+    const rankByRow = rankTickerRowsByDifficulty(rows);
 
     const { key, dir } = state.tickerSort;
     rows.sort((a, b) => {
@@ -2339,15 +2340,32 @@
     });
 
     const tbody = document.querySelector('#ticker-table tbody');
-    tbody.innerHTML = rows.map((r, i) => `
+    tbody.innerHTML = rows.map(r => `
       <tr>
-        <td class="num">${i + 1}</td>
+        <td class="num">${rankByRow.get(r) ?? '—'}</td>
         <td>${escapeHtml(r.name)}</td>
         <td><div class="ticker-cell">${renderTickerFixtures(r.gwFixtures)}</div></td>
         <td class="num">${r.avg !== null ? r.avg.toFixed(2) : '—'}</td>
       </tr>
     `).join('') || `<tr><td colspan="4" class="muted">No fixture data for this range.</td></tr>`;
     updateSortArrows('ticker-table', state.tickerSort);
+  }
+
+  // Teams with the same average difficulty share the same rank (1224 competition ranking),
+  // independent of which column the table is currently sorted by.
+  function rankTickerRowsByDifficulty(rows) {
+    const rankByRow = new Map();
+    const withAvg = rows.filter(r => r.avg !== null).slice().sort((a, b) => a.avg - b.avg);
+    let rank = 0, seen = 0, lastAvg = null;
+    for (const r of withAvg) {
+      seen++;
+      if (lastAvg === null || Math.abs(r.avg - lastAvg) > 1e-9) {
+        rank = seen;
+        lastAvg = r.avg;
+      }
+      rankByRow.set(r, rank);
+    }
+    return rankByRow;
   }
 
   function renderTickerFixtures(gwFixtures) {
