@@ -1079,12 +1079,18 @@
 
     <h2 class="section-heading">Fixtures by gameweek</h2>
     <div class="controls">
-      <select id="fixture-gameweek"></select>
+      <label class="inline-label" for="fixture-gameweek">From
+        <select id="fixture-gameweek"></select>
+      </label>
+      <label class="inline-label" for="fixture-gameweek-end">To
+        <select id="fixture-gameweek-end"></select>
+      </label>
     </div>
     <div class="table-wrap">
       <table id="fixtures-table">
         <thead>
           <tr>
+            <th>GW</th>
             <th>Kickoff</th>
             <th>Home</th>
             <th>Difficulty</th>
@@ -2232,23 +2238,38 @@
 
   function initGameweekFilter() {
     const select = document.getElementById('fixture-gameweek');
+    const endSelect = document.getElementById('fixture-gameweek-end');
     const events = state.bootstrap.events;
     select.innerHTML = '';
+    endSelect.innerHTML = '';
     for (const e of events) {
+      const label = e.name + (e.is_next ? ' (next)' : e.is_current ? ' (current)' : '');
       const opt = document.createElement('option');
       opt.value = e.id;
-      opt.textContent = e.name + (e.is_next ? ' (next)' : e.is_current ? ' (current)' : '');
+      opt.textContent = label;
       if (e.is_next || e.is_current) opt.selected = true;
       select.appendChild(opt);
+
+      const endOpt = document.createElement('option');
+      endOpt.value = e.id;
+      endOpt.textContent = label;
+      if (e.is_next || e.is_current) endOpt.selected = true;
+      endSelect.appendChild(endOpt);
     }
     if (!select.value && events.length) select.value = events[0].id;
+    if (!endSelect.value && events.length) endSelect.value = events[0].id;
     select.addEventListener('change', renderFixtures);
+    endSelect.addEventListener('change', renderFixtures);
   }
 
   function renderFixtures() {
-    const gw = document.getElementById('fixture-gameweek').value;
-    const rows = state.fixtures.filter(f => String(f.event) === gw);
-    rows.sort((a, b) => new Date(a.kickoff_time || 0) - new Date(b.kickoff_time || 0));
+    const gwFrom = parseInt(document.getElementById('fixture-gameweek').value, 10);
+    const gwToRaw = parseInt(document.getElementById('fixture-gameweek-end').value, 10);
+    const gwTo = Number.isFinite(gwToRaw) ? gwToRaw : gwFrom;
+    const lo = Math.min(gwFrom, gwTo);
+    const hi = Math.max(gwFrom, gwTo);
+    const rows = state.fixtures.filter(f => f.event >= lo && f.event <= hi);
+    rows.sort((a, b) => (a.event - b.event) || (new Date(a.kickoff_time || 0) - new Date(b.kickoff_time || 0)));
 
     const tbody = document.querySelector('#fixtures-table tbody');
     const goalRecords = computeTeamGoalRecords();
@@ -2263,6 +2284,7 @@
       const awayCs = estimateCleanSheetChance(goalRecords, f.team_a, f.team_h, false);
       return `
         <tr>
+          <td>${f.event ?? '—'}</td>
           <td>${kickoff}</td>
           <td>${escapeHtml(teamName(f.team_h))}</td>
           <td>${diffChip(f.team_h_difficulty)}</td>
@@ -2274,7 +2296,7 @@
           <td class="num">${score}</td>
         </tr>
       `;
-    }).join('') || `<tr><td colspan="9" class="muted">No fixtures this gameweek.</td></tr>`;
+    }).join('') || `<tr><td colspan="10" class="muted">No fixtures in this gameweek range.</td></tr>`;
   }
 
   // ---- Fixture difficulty ticker ----
