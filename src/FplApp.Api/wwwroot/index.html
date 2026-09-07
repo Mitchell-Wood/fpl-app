@@ -1044,6 +1044,9 @@
   <section id="fixtures" class="panel">
     <h2 class="section-heading">Fixture difficulty ticker</h2>
     <div class="controls">
+      <label class="inline-label" for="ticker-start-gameweek">From
+        <select id="ticker-start-gameweek"></select>
+      </label>
       <label class="inline-label" for="ticker-weeks">Next
         <input id="ticker-weeks" type="number" min="1" max="20" value="5">
         gameweeks
@@ -1079,18 +1082,12 @@
 
     <h2 class="section-heading">Fixtures by gameweek</h2>
     <div class="controls">
-      <label class="inline-label" for="fixture-gameweek">From
-        <select id="fixture-gameweek"></select>
-      </label>
-      <label class="inline-label" for="fixture-gameweek-end">To
-        <select id="fixture-gameweek-end"></select>
-      </label>
+      <select id="fixture-gameweek"></select>
     </div>
     <div class="table-wrap">
       <table id="fixtures-table">
         <thead>
           <tr>
-            <th>GW</th>
             <th>Kickoff</th>
             <th>Home</th>
             <th>Difficulty</th>
@@ -1684,6 +1681,7 @@
       initDeadlineCountdown();
       initPositionFilter();
       initGameweekFilter();
+      initTickerStartGameweekFilter();
       initBonusGameweekFilter();
       initLineupGameweekFilter();
       initRecPositionFilter();
@@ -2238,38 +2236,23 @@
 
   function initGameweekFilter() {
     const select = document.getElementById('fixture-gameweek');
-    const endSelect = document.getElementById('fixture-gameweek-end');
     const events = state.bootstrap.events;
     select.innerHTML = '';
-    endSelect.innerHTML = '';
     for (const e of events) {
-      const label = e.name + (e.is_next ? ' (next)' : e.is_current ? ' (current)' : '');
       const opt = document.createElement('option');
       opt.value = e.id;
-      opt.textContent = label;
+      opt.textContent = e.name + (e.is_next ? ' (next)' : e.is_current ? ' (current)' : '');
       if (e.is_next || e.is_current) opt.selected = true;
       select.appendChild(opt);
-
-      const endOpt = document.createElement('option');
-      endOpt.value = e.id;
-      endOpt.textContent = label;
-      if (e.is_next || e.is_current) endOpt.selected = true;
-      endSelect.appendChild(endOpt);
     }
     if (!select.value && events.length) select.value = events[0].id;
-    if (!endSelect.value && events.length) endSelect.value = events[0].id;
     select.addEventListener('change', renderFixtures);
-    endSelect.addEventListener('change', renderFixtures);
   }
 
   function renderFixtures() {
-    const gwFrom = parseInt(document.getElementById('fixture-gameweek').value, 10);
-    const gwToRaw = parseInt(document.getElementById('fixture-gameweek-end').value, 10);
-    const gwTo = Number.isFinite(gwToRaw) ? gwToRaw : gwFrom;
-    const lo = Math.min(gwFrom, gwTo);
-    const hi = Math.max(gwFrom, gwTo);
-    const rows = state.fixtures.filter(f => f.event >= lo && f.event <= hi);
-    rows.sort((a, b) => (a.event - b.event) || (new Date(a.kickoff_time || 0) - new Date(b.kickoff_time || 0)));
+    const gw = document.getElementById('fixture-gameweek').value;
+    const rows = state.fixtures.filter(f => String(f.event) === gw);
+    rows.sort((a, b) => new Date(a.kickoff_time || 0) - new Date(b.kickoff_time || 0));
 
     const tbody = document.querySelector('#fixtures-table tbody');
     const goalRecords = computeTeamGoalRecords();
@@ -2284,7 +2267,6 @@
       const awayCs = estimateCleanSheetChance(goalRecords, f.team_a, f.team_h, false);
       return `
         <tr>
-          <td>${f.event ?? '—'}</td>
           <td>${kickoff}</td>
           <td>${escapeHtml(teamName(f.team_h))}</td>
           <td>${diffChip(f.team_h_difficulty)}</td>
@@ -2296,14 +2278,29 @@
           <td class="num">${score}</td>
         </tr>
       `;
-    }).join('') || `<tr><td colspan="10" class="muted">No fixtures in this gameweek range.</td></tr>`;
+    }).join('') || `<tr><td colspan="9" class="muted">No fixtures this gameweek.</td></tr>`;
   }
 
   // ---- Fixture difficulty ticker ----
 
-  function computeTickerRows(weeks) {
+  function initTickerStartGameweekFilter() {
+    const select = document.getElementById('ticker-start-gameweek');
     const events = state.bootstrap.events;
-    const startEvent = events.find(e => !e.finished) || events[0];
+    select.innerHTML = '';
+    for (const e of events) {
+      const opt = document.createElement('option');
+      opt.value = e.id;
+      opt.textContent = e.name + (e.is_next ? ' (next)' : e.is_current ? ' (current)' : '');
+      if (e.is_next || e.is_current) opt.selected = true;
+      select.appendChild(opt);
+    }
+    if (!select.value && events.length) select.value = events[0].id;
+    select.addEventListener('change', renderTicker);
+  }
+
+  function computeTickerRows(weeks, startGwId) {
+    const events = state.bootstrap.events;
+    const startEvent = (startGwId && events.find(e => e.id === startGwId)) || events.find(e => !e.finished) || events[0];
     if (!startEvent) return [];
     const gwIds = Array.from({ length: weeks }, (_, i) => startEvent.id + i);
 
@@ -2329,8 +2326,9 @@
   function renderTicker() {
     const weeksInput = document.getElementById('ticker-weeks');
     const weeks = Math.min(20, Math.max(1, parseInt(weeksInput.value, 10) || 5));
+    const startGwId = parseInt(document.getElementById('ticker-start-gameweek').value, 10) || null;
 
-    let rows = computeTickerRows(weeks);
+    let rows = computeTickerRows(weeks, startGwId);
 
     const { key, dir } = state.tickerSort;
     rows.sort((a, b) => {
