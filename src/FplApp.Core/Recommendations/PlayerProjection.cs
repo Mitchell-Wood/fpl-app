@@ -17,7 +17,8 @@ internal static class PlayerProjection
     public static double EstimateProjectedPoints(
         Player player,
         IReadOnlyDictionary<int, List<FixtureDifficultyEntry>> rawDifficultiesByTeam,
-        IReadOnlyDictionary<int, Team> teamsById)
+        IReadOnlyDictionary<int, Team> teamsById,
+        IReadOnlyDictionary<int, TeamFormRating>? formByTeam = null)
     {
         if (!rawDifficultiesByTeam.TryGetValue(player.Team, out var entries) || entries.Count == 0)
         {
@@ -27,6 +28,6 @@ internal static class PlayerProjection
         var playerTeam = teamsById.GetValueOrDefault(player.Team);
         var nextEvent = entries.Min(e => e.EventId);
         return entries.Sum(e => ExpectedPointsEngine.EstimatePoints(
-            player, playerTeam, e.Difficulty, teamsById.GetValueOrDefault(e.OpponentTeamId), e.IsHome, weeksAhead: e.EventId - nextEvent));
+            player, playerTeam, e.Difficulty, teamsById.GetValueOrDefault(e.OpponentTeamId), e.IsHome, weeksAhead: e.EventId - nextEvent, formByTeam: formByTeam));
     }
 }

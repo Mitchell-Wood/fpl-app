@@ -29,6 +29,7 @@ public class PlayerRecommendationService
         ArgumentNullException.ThrowIfNull(fixtures);
 
         var rawDifficultyByTeam = FixtureDifficultyCalculator.RawUpcomingDifficultiesByTeam(fixtures, fixtureLookaheadWeeks);
+        var formByTeam = TeamFormCalculator.ComputeTeamForm(fixtures);
         var teamsById = bootstrap.Teams.ToDictionary(t => t.Id);
 
         var candidates = bootstrap.Elements
@@ -38,7 +39,7 @@ public class PlayerRecommendationService
             .Where(p => maxCost is null || p.NowCost <= maxCost);
 
         return candidates
-            .OrderByDescending(p => Score(p, rawDifficultyByTeam, teamsById))
+            .OrderByDescending(p => Score(p, rawDifficultyByTeam, teamsById, formByTeam))
             .Take(count)
             .ToList();
     }
@@ -52,7 +53,8 @@ public class PlayerRecommendationService
     internal static double Score(
         Player player,
         IReadOnlyDictionary<int, List<FixtureDifficultyEntry>> rawDifficultyByTeam,
-        IReadOnlyDictionary<int, Team> teamsById)
+        IReadOnlyDictionary<int, Team> teamsById,
+        IReadOnlyDictionary<int, TeamFormRating>? formByTeam = null)
     {
         var costInMillions = player.NowCost / 10.0;
         if (costInMillions <= 0)
@@ -72,7 +74,7 @@ public class PlayerRecommendationService
 
         var entries = rawDifficultyByTeam.GetValueOrDefault(player.Team, []);
         var avgFixtureFactor = entries.Count > 0
-            ? entries.Average(e => ExpectedPointsEngine.FixtureFactor(e.Difficulty, playerTeam, teamsById.GetValueOrDefault(e.OpponentTeamId), e.IsHome, player.ElementType))
+            ? entries.Average(e => ExpectedPointsEngine.FixtureFactor(e.Difficulty, playerTeam, teamsById.GetValueOrDefault(e.OpponentTeamId), e.IsHome, player.ElementType, formByTeam))
             : 1.0;
 
         return baseScore * avgFixtureFactor;

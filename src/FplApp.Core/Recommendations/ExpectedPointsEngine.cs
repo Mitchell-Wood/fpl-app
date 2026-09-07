@@ -57,9 +57,15 @@ public static class ExpectedPointsEngine
     /// How many gameweeks out this fixture is from the next one (0 = the next gameweek). Only affects
     /// how much a live fitness doubt discounts the estimate — see <see cref="PlayingChanceReliability"/>.
     /// </param>
-    public static double EstimatePoints(Player player, Team? playerTeam, int fplDifficulty, Team? opponentTeam, bool isHome, int weeksAhead = 0)
-        => EffectiveRate(player, playerTeam, weeksAhead, MatchGoalEnvironmentFactor(fplDifficulty, playerTeam, opponentTeam, isHome))
-            * FixtureFactor(fplDifficulty, playerTeam, opponentTeam, isHome, player.ElementType);
+    /// <param name="formByTeam">
+    /// Optional recent-form rating per team (see <see cref="TeamFormCalculator"/>), blended into
+    /// <see cref="FixtureFactor"/> alongside FDR and preseason strength. Omitted entirely (rather than
+    /// defaulting to neutral) when null, matching the existing fallback behaviour when team strength
+    /// itself is unavailable.
+    /// </param>
+    public static double EstimatePoints(Player player, Team? playerTeam, int fplDifficulty, Team? opponentTeam, bool isHome, int weeksAhead = 0, IReadOnlyDictionary<int, TeamFormRating>? formByTeam = null)
+        => EffectiveRate(player, playerTeam, weeksAhead, MatchGoalEnvironmentFactor(fplDifficulty, playerTeam, opponentTeam, isHome, formByTeam))
+            * FixtureFactor(fplDifficulty, playerTeam, opponentTeam, isHome, player.ElementType, formByTeam);
 
     /// <summary>
     /// The blended per-fixture point rate: recent form (or FPL's own next-gameweek prediction, or
@@ -84,15 +90,17 @@ public static class ExpectedPointsEngine
 
     /// <summary>
     /// Blends FPL's own 1-5 fixture difficulty rating with a continuous factor derived from each
-    /// team's actual current-season strength — FPL's FDR only reflects the opponent, so it rates the
-    /// same opponent identically for a title-chasing team and a relegation-battler even though the
-    /// strong team should get more credit for an "easy" fixture. Uses position-specific strength (a
-    /// defensive player's clean-sheet chance depends on their team's defence vs the opponent's
-    /// attack; an attacking player's scoring chance depends on the reverse) rather than each team's
-    /// overall rating. Falls back to the plain FDR-only factor when strength data isn't available
-    /// (e.g. in tests, or before a season's ratings have settled).
+    /// team's preseason strength rating, and (when supplied) a third factor derived from actual
+    /// recent results — FPL's FDR only reflects the opponent, so it rates the same opponent
+    /// identically for a title-chasing team and a relegation-battler even though the strong team
+    /// should get more credit for an "easy" fixture, and the preseason rating never updates from what
+    /// actually happens on the pitch. Uses position-specific strength (a defensive player's
+    /// clean-sheet chance depends on their team's defence vs the opponent's attack; an attacking
+    /// player's scoring chance depends on the reverse) rather than each team's overall rating. Falls
+    /// back to the plain FDR-only factor when even preseason strength data isn't available (e.g. in
+    /// tests, or before a season's ratings have settled).
     /// </summary>
-    public static double FixtureFactor(int fplDifficulty, Team? playerTeam, Team? opponentTeam, bool isHome, int elementType)
+    public static double FixtureFactor(int fplDifficulty, Team? playerTeam, Team? opponentTeam, bool isHome, int elementType, IReadOnlyDictionary<int, TeamFormRating>? formByTeam = null)
     {
         var fdrFactor = (6.0 - fplDifficulty) / 3.0;
         if (playerTeam is null || opponentTeam is null)
@@ -122,7 +130,37 @@ public static class ExpectedPointsEngine
         }
 
         var strengthFactor = Math.Clamp((double)ownStrength / oppStrength, 0.5, 2.0);
-        return (fdrFactor + strengthFactor) / 2.0;
+
+        var formFactor = FormFactor(formByTeam, playerTeam, opponentTeam, isHome, isDefensivePosition);
+        return formFactor is null
+            ? (fdrFactor + strengthFactor) / 2.0
+            : (fdrFactor + strengthFactor + formFactor.Value) / 3.0;
+    }
+
+    /// <summary>
+    /// The recent-form equivalent of the preseason <c>strengthFactor</c> above — same clamped-ratio
+    /// shape, computed from <see cref="TeamFormRating"/> instead of <see cref="Team.StrengthAttackHome"/>
+    /// and friends. Returns null (rather than a neutral 1.0) when form data isn't available for either
+    /// team, so <see cref="FixtureFactor"/> can fall back to its original two-factor blend exactly as
+    /// before instead of diluting it with an uninformative middle value.
+    /// </summary>
+    private static double? FormFactor(IReadOnlyDictionary<int, TeamFormRating>? formByTeam, Team playerTeam, Team opponentTeam, bool isHome, bool isDefensivePosition)
+    {
+        if (formByTeam is null
+            || !formByTeam.TryGetValue(playerTeam.Id, out var ownForm)
+            || !formByTeam.TryGetValue(opponentTeam.Id, out var oppForm))
+        {
+            return null;
+        }
+
+        var ownRate = isDefensivePosition
+            ? (isHome ? ownForm.DefenceHome : ownForm.DefenceAway)
+            : (isHome ? ownForm.AttackHome : ownForm.AttackAway);
+        var oppRate = isDefensivePosition
+            ? (isHome ? oppForm.AttackAway : oppForm.AttackHome)
+            : (isHome ? oppForm.DefenceAway : oppForm.DefenceHome);
+
+        return Math.Clamp(ownRate / oppRate, 0.5, 2.0);
     }
 
     /// <summary>
@@ -134,14 +172,14 @@ public static class ExpectedPointsEngine
     /// team is "in form" going in — a relegation-battler grinding out a 0-0 suppresses bonus for
     /// everyone on the pitch just as much as it does clean-sheet points for the other side.
     /// </summary>
-    private static double MatchGoalEnvironmentFactor(int fplDifficulty, Team? playerTeam, Team? opponentTeam, bool isHome)
+    private static double MatchGoalEnvironmentFactor(int fplDifficulty, Team? playerTeam, Team? opponentTeam, bool isHome, IReadOnlyDictionary<int, TeamFormRating>? formByTeam = null)
     {
         // Reuses the player's own-side FDR for the reversed (opponent's-attack) calculation too, since
         // the opponent's own FDR rating for this fixture isn't available here — an approximation, but
-        // FDR is only half of what FixtureFactor blends in, with the correctly-swapped team-strength
-        // ratio carrying the rest.
-        var ownAttack = FixtureFactor(fplDifficulty, playerTeam, opponentTeam, isHome, MidfielderType);
-        var oppAttack = FixtureFactor(fplDifficulty, opponentTeam, playerTeam, !isHome, MidfielderType);
+        // FDR is only a third of what FixtureFactor blends in, with the correctly-swapped team-strength
+        // and recent-form ratios carrying the rest.
+        var ownAttack = FixtureFactor(fplDifficulty, playerTeam, opponentTeam, isHome, MidfielderType, formByTeam);
+        var oppAttack = FixtureFactor(fplDifficulty, opponentTeam, playerTeam, !isHome, MidfielderType, formByTeam);
         return (ownAttack + oppAttack) / 2.0;
     }
 

@@ -31,6 +31,7 @@ public class LineupOptimizerService
         var playersById = bootstrap.Elements.ToDictionary(p => p.Id);
         var teamsById = bootstrap.Teams.ToDictionary(t => t.Id);
         var eventFixtures = fixtures.Where(f => f.Event == eventId).ToList();
+        var formByTeam = TeamFormCalculator.ComputeTeamForm(fixtures);
 
         var scored = new List<(int PlayerId, int ElementType, double ExpectedPoints)>();
         foreach (var pick in picks.Picks)
@@ -40,7 +41,7 @@ public class LineupOptimizerService
                 continue;
             }
 
-            scored.Add((player.Id, player.ElementType, ExpectedPointsFor(player, eventFixtures, teamsById)));
+            scored.Add((player.Id, player.ElementType, ExpectedPointsFor(player, eventFixtures, teamsById, formByTeam)));
         }
 
         var byType = new Dictionary<int, List<(int PlayerId, double ExpectedPoints)>>
@@ -127,7 +128,7 @@ public class LineupOptimizerService
             .Select(s => (s.PlayerId, s.ExpectedPoints))
             .ToList();
 
-    private static double ExpectedPointsFor(Player player, List<Fixture> eventFixtures, IReadOnlyDictionary<int, Team> teamsById)
+    private static double ExpectedPointsFor(Player player, List<Fixture> eventFixtures, IReadOnlyDictionary<int, Team> teamsById, IReadOnlyDictionary<int, TeamFormRating>? formByTeam)
     {
         var teamFixtures = eventFixtures.Where(f => f.TeamH == player.Team || f.TeamA == player.Team);
         var playerTeam = teamsById.GetValueOrDefault(player.Team);
@@ -138,7 +139,7 @@ public class LineupOptimizerService
             var isHome = fixture.TeamH == player.Team;
             var opponentId = isHome ? fixture.TeamA : fixture.TeamH;
             var difficulty = isHome ? fixture.TeamHDifficulty : fixture.TeamADifficulty;
-            expected += ExpectedPointsEngine.EstimatePoints(player, playerTeam, difficulty, teamsById.GetValueOrDefault(opponentId), isHome);
+            expected += ExpectedPointsEngine.EstimatePoints(player, playerTeam, difficulty, teamsById.GetValueOrDefault(opponentId), isHome, formByTeam: formByTeam);
         }
 
         return player.Status == "a" ? expected : expected + UnavailablePenalty;

@@ -239,6 +239,46 @@ public class ExpectedPointsEngineTests
     }
 
     [Fact]
+    public void FixtureFactor_GivesAStrongerRecentAttackMoreCredit_WhenFormDataIsSupplied()
+    {
+        var playerTeam = new Team { Id = 1, StrengthAttackHome = 1200, StrengthDefenceHome = 1200 };
+        var opponent = new Team { Id = 2, StrengthAttackAway = 1200, StrengthDefenceAway = 1200 };
+
+        var strongForm = new Dictionary<int, TeamFormRating>
+        {
+            [1] = new TeamFormRating(AttackHome: 1.6, AttackAway: 1.0, DefenceHome: 1.0, DefenceAway: 1.0),
+            [2] = new TeamFormRating(AttackHome: 1.0, AttackAway: 1.0, DefenceHome: 1.0, DefenceAway: 1.0),
+        };
+        var weakForm = new Dictionary<int, TeamFormRating>
+        {
+            [1] = new TeamFormRating(AttackHome: 0.6, AttackAway: 1.0, DefenceHome: 1.0, DefenceAway: 1.0),
+            [2] = new TeamFormRating(AttackHome: 1.0, AttackAway: 1.0, DefenceHome: 1.0, DefenceAway: 1.0),
+        };
+
+        var strongFormFactor = ExpectedPointsEngine.FixtureFactor(fplDifficulty: 3, playerTeam, opponent, isHome: true, elementType: 3, strongForm);
+        var weakFormFactor = ExpectedPointsEngine.FixtureFactor(fplDifficulty: 3, playerTeam, opponent, isHome: true, elementType: 3, weakForm);
+
+        Assert.True(strongFormFactor > weakFormFactor, "a team attacking well in recent games should get more credit on an identically FDR- and strength-rated fixture");
+    }
+
+    [Fact]
+    public void FixtureFactor_FallsBackToTheTwoFactorBlend_WhenFormDataIsMissingForATeam()
+    {
+        var playerTeam = new Team { Id = 1, StrengthAttackHome = 1200, StrengthDefenceHome = 1200 };
+        var opponent = new Team { Id = 2, StrengthAttackAway = 1200, StrengthDefenceAway = 1200 };
+        var incompleteForm = new Dictionary<int, TeamFormRating>
+        {
+            [1] = new TeamFormRating(AttackHome: 1.6, AttackAway: 1.0, DefenceHome: 1.0, DefenceAway: 1.0),
+            // no entry for team 2 — the opponent's form is unknown
+        };
+
+        var withIncompleteForm = ExpectedPointsEngine.FixtureFactor(fplDifficulty: 3, playerTeam, opponent, isHome: true, elementType: 3, incompleteForm);
+        var withNoForm = ExpectedPointsEngine.FixtureFactor(fplDifficulty: 3, playerTeam, opponent, isHome: true, elementType: 3, formByTeam: null);
+
+        Assert.Equal(withNoForm, withIncompleteForm, precision: 6);
+    }
+
+    [Fact]
     public void EffectiveRate_DiscountsForALiveFitnessDoubt()
     {
         var fit = MakePlayer(form: "6.0");

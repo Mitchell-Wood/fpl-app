@@ -18,6 +18,7 @@ public class CaptaincyService
         var playersById = bootstrap.Elements.ToDictionary(p => p.Id);
         var teamsById = bootstrap.Teams.ToDictionary(t => t.Id);
         var eventFixtures = fixtures.Where(f => f.Event == eventId).ToList();
+        var formByTeam = TeamFormCalculator.ComputeTeamForm(fixtures);
 
         var results = new List<CaptainSuggestion>();
 
@@ -49,7 +50,7 @@ public class CaptaincyService
                     Difficulty = difficulty,
                 });
 
-                expectedPoints += ExpectedPointsEngine.EstimatePoints(player, playerTeam, difficulty, opponentTeam, isHome);
+                expectedPoints += ExpectedPointsEngine.EstimatePoints(player, playerTeam, difficulty, opponentTeam, isHome, formByTeam: formByTeam);
             }
 
             results.Add(new CaptainSuggestion

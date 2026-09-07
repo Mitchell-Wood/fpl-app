@@ -36,6 +36,7 @@ public class SquadBuilderService
         ArgumentNullException.ThrowIfNull(fixtures);
 
         var rawDifficultyByTeam = FixtureDifficultyCalculator.RawUpcomingDifficultiesByTeam(fixtures, fixtureLookaheadWeeks);
+        var formByTeam = TeamFormCalculator.ComputeTeamForm(fixtures);
         var teamsById = bootstrap.Teams.ToDictionary(t => t.Id);
 
         var byPosition = bootstrap.Elements
@@ -53,9 +54,9 @@ public class SquadBuilderService
         }
 
         var remainingBudget = budget - floorCost;
-        SpendRemainingBudgetOnUpgrades(selected, teamCounts, byPosition, rawDifficultyByTeam, teamsById, maxPerTeam, ref remainingBudget);
+        SpendRemainingBudgetOnUpgrades(selected, teamCounts, byPosition, rawDifficultyByTeam, teamsById, formByTeam, maxPerTeam, ref remainingBudget);
 
-        return BuildResult(bootstrap, selected, budget, remainingBudget, rawDifficultyByTeam, teamsById);
+        return BuildResult(bootstrap, selected, budget, remainingBudget, rawDifficultyByTeam, teamsById, formByTeam);
     }
 
     /// <summary>
@@ -109,6 +110,7 @@ public class SquadBuilderService
         IReadOnlyDictionary<int, List<Player>> byPosition,
         IReadOnlyDictionary<int, List<FixtureDifficultyEntry>> rawDifficultyByTeam,
         IReadOnlyDictionary<int, Team> teamsById,
+        IReadOnlyDictionary<int, TeamFormRating>? formByTeam,
         int maxPerTeam,
         ref int remainingBudget)
     {
@@ -143,8 +145,8 @@ public class SquadBuilderService
                         continue;
                     }
 
-                    var gain = PlayerProjection.EstimateProjectedPoints(candidate, rawDifficultyByTeam, teamsById)
-                        - PlayerProjection.EstimateProjectedPoints(current, rawDifficultyByTeam, teamsById);
+                    var gain = PlayerProjection.EstimateProjectedPoints(candidate, rawDifficultyByTeam, teamsById, formByTeam)
+                        - PlayerProjection.EstimateProjectedPoints(current, rawDifficultyByTeam, teamsById, formByTeam);
                     if (gain > bestGain)
                     {
                         bestGain = gain;
@@ -179,9 +181,10 @@ public class SquadBuilderService
         int budget,
         int remainingBudget,
         IReadOnlyDictionary<int, List<FixtureDifficultyEntry>> rawDifficultyByTeam,
-        IReadOnlyDictionary<int, Team> teamsById)
+        IReadOnlyDictionary<int, Team> teamsById,
+        IReadOnlyDictionary<int, TeamFormRating>? formByTeam)
     {
-        var projected = selected.ToDictionary(p => p.Id, p => PlayerProjection.EstimateProjectedPoints(p, rawDifficultyByTeam, teamsById));
+        var projected = selected.ToDictionary(p => p.Id, p => PlayerProjection.EstimateProjectedPoints(p, rawDifficultyByTeam, teamsById, formByTeam));
 
         var selectedByPosition = selected
             .GroupBy(p => p.ElementType)
