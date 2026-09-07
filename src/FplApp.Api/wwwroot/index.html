@@ -326,6 +326,41 @@
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--series-1) 18%, transparent);
   }
   .controls input { min-width: 200px; }
+  .combo-wrap {
+    position: relative;
+    min-width: 220px;
+  }
+  .combo-wrap input[type="text"] {
+    width: 100%;
+    min-width: 0;
+  }
+  .combo-list {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    max-height: 240px;
+    overflow-y: auto;
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: var(--shadow-sm);
+    z-index: 20;
+  }
+  .combo-option {
+    padding: 7px 10px;
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+  .combo-option:hover {
+    background: var(--row-hover);
+  }
+  .combo-option.muted {
+    cursor: default;
+  }
+  .combo-option.muted:hover {
+    background: none;
+  }
   .controls button {
     font: inherit;
     font-size: 0.875rem;
@@ -1196,10 +1231,18 @@
           Pick anyone from your squad and a replacement in the same position — this only plans the
           transfer here, it doesn't make it on the FPL site.
         </p>
-        <div class="controls" style="margin-bottom:0;">
-          <select id="manual-transfer-out" style="min-width:220px;"></select>
-          <span class="muted">for</span>
-          <select id="manual-transfer-in" style="min-width:220px;"></select>
+        <div class="controls" style="margin-bottom:0;align-items:flex-start;">
+          <div class="combo-wrap">
+            <input id="manual-transfer-out-search" type="text" autocomplete="off" placeholder="Search your squad&hellip;">
+            <input type="hidden" id="manual-transfer-out">
+            <div id="manual-transfer-out-list" class="combo-list" hidden></div>
+          </div>
+          <span class="muted" style="padding-top:8px;">for</span>
+          <div class="combo-wrap">
+            <input id="manual-transfer-in-search" type="text" autocomplete="off" placeholder="Pick a player to transfer out first&hellip;" disabled>
+            <input type="hidden" id="manual-transfer-in">
+            <div id="manual-transfer-in-list" class="combo-list" hidden></div>
+          </div>
           <button id="manual-transfer-add" type="button">Add</button>
         </div>
         <div id="manual-transfer-error" class="muted" style="font-size:0.8rem;color:var(--status-critical);display:none;margin-top:6px;"></div>
@@ -2967,41 +3010,112 @@
     panel.style.display = '';
   }
 
+  // A minimal searchable combobox — a text input that filters a fixed option list as you type,
+  // backed by a hidden input for the selected value — since the manual-transfer pickers need to be
+  // searchable (up to ~600+ players in the "in" list) and this app has no UI component library to
+  // reach for instead. `getOptions` is called fresh on every keystroke/focus rather than once, so the
+  // same combobox can be reused as its underlying option list changes (e.g. the "in" list depends on
+  // whichever "out" player is currently selected).
+  // Strips accents/diacritics (é -> e, ß -> ss, ø -> o, ...) so a plain-ASCII search still matches a
+  // player name that has them — common among FPL's many non-English names (Ødegaard, Groß, ...).
+  function normalizeForSearch(text) {
+    return text.toLowerCase().replace(/ß/g, 'ss').replace(/ø/g, 'o').normalize('NFD').replace(/[̀-ͯ]/g, '');
+  }
+
+  function setupSearchableCombo(prefix, { getOptions, onSelect, maxResults = 30 }) {
+    const searchInput = document.getElementById(`${prefix}-search`);
+    const hiddenInput = document.getElementById(prefix);
+    const listEl = document.getElementById(`${prefix}-list`);
+
+    function renderOptions() {
+      const options = getOptions();
+      const query = normalizeForSearch(searchInput.value.trim());
+      const filtered = query ? options.filter(o => o.searchText.includes(query)) : options;
+      const shown = filtered.slice(0, maxResults);
+      listEl.innerHTML = shown.length
+        ? shown.map(o => `<div class="combo-option" data-value="${o.value}">${o.label}</div>`).join('')
+          + (filtered.length > shown.length ? `<div class="combo-option muted">${filtered.length - shown.length} more &mdash; keep typing to narrow it down</div>` : '')
+        : `<div class="combo-option muted">No matches</div>`;
+      listEl.hidden = false;
+    }
+
+    searchInput.addEventListener('input', () => {
+      hiddenInput.value = '';
+      renderOptions();
+    });
+    searchInput.addEventListener('focus', () => {
+      if (!searchInput.disabled) renderOptions();
+    });
+    searchInput.addEventListener('blur', () => {
+      // Delayed so a click on an option (which blurs the input first) still registers below.
+      setTimeout(() => { listEl.hidden = true; }, 150);
+    });
+    listEl.addEventListener('mousedown', e => {
+      const option = e.target.closest('.combo-option[data-value]');
+      if (!option) return;
+      e.preventDefault();
+      hiddenInput.value = option.dataset.value;
+      searchInput.value = option.textContent;
+      listEl.hidden = true;
+      onSelect?.(option.dataset.value);
+    });
+
+    return {
+      reset(placeholder, disabled) {
+        searchInput.value = '';
+        hiddenInput.value = '';
+        searchInput.placeholder = placeholder;
+        searchInput.disabled = !!disabled;
+        listEl.hidden = true;
+      },
+    };
+  }
+
+  const manualTransferOutCombo = setupSearchableCombo('manual-transfer-out', {
+    getOptions: () => state.manualTransferOutOptions || [],
+    onSelect: outId => populateManualTransferInOptions(parseInt(outId, 10)),
+  });
+  const manualTransferInCombo = setupSearchableCombo('manual-transfer-in', {
+    getOptions: () => state.manualTransferInOptions || [],
+  });
+
   // Lets you plan a transfer that wasn't one of the algorithm's own suggestions — any squad player
   // for any same-position replacement. Kept restricted to the same position (rather than a free pick
   // of any player) so the resulting squad still has a legal 2-5-5-3 shape for the lineup optimizer to
   // work with.
   function populateManualTransferForm(currentPicks) {
-    const outSelect = document.getElementById('manual-transfer-out');
-    const previousOutId = outSelect.value;
-    const sortedPicks = [...currentPicks].sort((a, b) => a.elementType - b.elementType || a.webName.localeCompare(b.webName));
-    outSelect.innerHTML = sortedPicks.map(p =>
-      `<option value="${p.playerId}" data-element-type="${p.elementType}">${escapeHtml(p.webName)} (${escapeHtml(p.teamName)}, ${escapeHtml(positionName(p.elementType))})</option>`
-    ).join('');
-    if (sortedPicks.some(p => String(p.playerId) === previousOutId)) {
-      outSelect.value = previousOutId;
-    }
-    populateManualTransferInOptions(currentPicks);
+    state.manualTransferPicks = currentPicks;
+    state.manualTransferOutOptions = [...currentPicks]
+      .sort((a, b) => a.elementType - b.elementType || a.webName.localeCompare(b.webName))
+      .map(p => ({
+        value: String(p.playerId),
+        elementType: p.elementType,
+        label: `${escapeHtml(p.webName)} (${escapeHtml(p.teamName)}, ${escapeHtml(positionName(p.elementType))})`,
+        searchText: normalizeForSearch(`${p.webName} ${p.teamName}`),
+      }));
+    manualTransferOutCombo.reset('Search your squad…', false);
+    state.manualTransferInOptions = [];
+    manualTransferInCombo.reset('Pick a player to transfer out first…', true);
   }
 
-  function populateManualTransferInOptions(currentPicks) {
-    const outSelect = document.getElementById('manual-transfer-out');
-    const inSelect = document.getElementById('manual-transfer-in');
-    const selectedOption = outSelect.selectedOptions[0];
-    if (!selectedOption) {
-      inSelect.innerHTML = '';
+  function populateManualTransferInOptions(outId) {
+    const outOption = (state.manualTransferOutOptions || []).find(o => o.value === String(outId));
+    if (!outOption) {
+      state.manualTransferInOptions = [];
+      manualTransferInCombo.reset('Pick a player to transfer out first…', true);
       return;
     }
 
-    const elementType = parseInt(selectedOption.dataset.elementType, 10);
-    const squadIds = new Set(currentPicks.map(p => p.playerId));
-    const candidates = state.bootstrap.elements
-      .filter(e => e.element_type === elementType && e.status === 'a' && !squadIds.has(e.id))
-      .sort((a, b) => b.total_points - a.total_points);
-
-    inSelect.innerHTML = candidates.map(e =>
-      `<option value="${e.id}">${escapeHtml(e.web_name)} (${escapeHtml(teamName(e.team))}) &middot; £${(e.now_cost / 10).toFixed(1)}m &middot; ${e.total_points} pts</option>`
-    ).join('');
+    const squadIds = new Set((state.manualTransferPicks || []).map(p => p.playerId));
+    state.manualTransferInOptions = state.bootstrap.elements
+      .filter(e => e.element_type === outOption.elementType && e.status === 'a' && !squadIds.has(e.id))
+      .sort((a, b) => b.total_points - a.total_points)
+      .map(e => ({
+        value: String(e.id),
+        label: `${escapeHtml(e.web_name)} (${escapeHtml(teamName(e.team))}) &middot; £${(e.now_cost / 10).toFixed(1)}m &middot; ${e.total_points} pts`,
+        searchText: normalizeForSearch(`${e.web_name} ${teamName(e.team)}`),
+      }));
+    manualTransferInCombo.reset('Search for a replacement…', false);
   }
 
   function addManualTransfer() {
@@ -4259,9 +4373,6 @@
     removePlannedTransfer(parseInt(btn.dataset.undoTransferOut, 10));
   });
   document.getElementById('planned-transfers-clear').addEventListener('click', clearPlannedTransfers);
-  document.getElementById('manual-transfer-out').addEventListener('change', () => {
-    populateManualTransferInOptions(state.myTeam?.picks || []);
-  });
   document.getElementById('manual-transfer-add').addEventListener('click', addManualTransfer);
   function onTransferControlsChanged() {
     if (!state.myTeam) return;
